@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Planejador de passes</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#17734A">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Passes">
+<style>
+:root{
+  --bg:#E9EDF1; --surface:#FFFFFF; --ink:#18212C; --muted:#5A6675;
+  --line:#D3DAE2; --green:#17734A; --green-soft:#DDEFE5; --amber:#9A6E00; --amber-soft:#F6EBCB;
+  --blue:#2463A8; --blue-soft:#DCE8F6; --past:#F3F5F7;
+  color-scheme:light; box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg:#141A21; --surface:#1D252F; --ink:#E8EDF2; --muted:#9AA6B4; --line:#2E3946;
+  --green:#3FBF80; --green-soft:#1C3A2B; --amber:#E2B23A; --amber-soft:#3A3018;
+  --blue:#6FA8E8; --blue-soft:#1C2E44; --past:#181F27; color-scheme:dark; } }
+:root[data-theme="dark"]{
+  --bg:#141A21; --surface:#1D252F; --ink:#E8EDF2; --muted:#9AA6B4; --line:#2E3946;
+  --green:#3FBF80; --green-soft:#1C3A2B; --amber:#E2B23A; --amber-soft:#3A3018;
+  --blue:#6FA8E8; --blue-soft:#1C2E44; --past:#181F27; color-scheme:dark; }
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:17px;line-height:1.45}
+main{max-width:560px;margin:0 auto;padding:18px 14px 40px}
+.num{font-family:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;font-weight:700;font-variant-numeric:tabular-nums}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.panel h2{font-size:16px;font-weight:600;margin:0 0 10px;color:var(--muted)}
+p{margin:0}
+.verdict{background:var(--green);color:#fff;border-radius:14px;padding:16px 18px 18px;margin-bottom:14px}
+.verdict .lead{font-size:15px;opacity:.9}
+.verdict .pick{font-size:34px;line-height:1.05;margin:2px 0 6px}
+.verdict .sub{font-size:15px;opacity:.95}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row > *{flex:1;min-width:140px}
+label{font-size:14px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+input,select{font:600 17px "Barlow",system-ui,sans-serif;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%;min-height:44px}
+button{font:600 16px "Barlow",system-ui,sans-serif;min-height:44px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink);padding:0 14px;cursor:pointer}
+button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.status{margin-top:12px;padding:12px;border-radius:10px;background:var(--blue-soft);color:var(--ink);font-size:16px}
+.status strong{font-weight:600}
+.status .big{font-size:26px;color:var(--blue);display:block;line-height:1.1;margin-bottom:2px}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.week label{text-align:center;font-weight:600}
+.week input{text-align:center;padding:8px 2px;font-size:16px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal .dow{text-align:center;font-size:13px;color:var(--muted);font-weight:600;padding-bottom:2px}
+.day{min-height:62px;border-radius:8px;border:1px solid var(--line);background:var(--surface);padding:4px 3px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;cursor:pointer;font:inherit;color:var(--ink);min-width:0}
+.day .d{font-size:13px;font-weight:600;align-self:flex-start;padding-left:2px}
+.day .v{font-size:15px}
+.day .t{font-size:11px;font-weight:600;border-radius:4px;padding:0 4px;line-height:16px;max-width:100%;overflow:hidden;white-space:nowrap}
+.day.off .v{color:var(--muted);font-weight:500;font-family:inherit;font-size:12px}
+.day.past{background:var(--past);opacity:.6}
+.day.today{border:2px solid var(--ink)}
+.day.cur .t{background:var(--blue-soft);color:var(--blue)}
+.day.buy .t{background:var(--green);color:#fff}
+.day.cont .t{background:var(--green-soft);color:var(--green)}
+.day.warn .t{background:var(--amber-soft);color:var(--amber)}
+.day.edited .v{text-decoration:underline dotted}
+.day.sel{outline:3px solid var(--amber);outline-offset:1px}
+.empty{min-height:62px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted);margin-top:10px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+.editor{margin-top:12px;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+.editor .row{margin-top:8px;align-items:flex-end}
+.opt{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:10px 6px;border-top:1px solid var(--line);cursor:pointer;border-radius:8px}
+.opt:first-child{border-top:0}
+.opt .name{font-weight:600}
+.opt .cost{font-size:22px;text-align:right}
+.opt .note{grid-column:1/-1;font-size:14px;color:var(--muted)}
+.opt.best .name,.opt.best .cost{color:var(--green)}
+.opt.shown{background:var(--green-soft)}
+.totals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px}
+.totals div{background:var(--bg);border-radius:10px;padding:10px}
+.totals span{display:block;font-size:13px;color:var(--muted)}
+.totals .num{font-size:21px}
+.monthbar{display:flex;align-items:center;gap:8px}
+.monthbar .num{flex:1;text-align:center;font-size:24px;text-transform:capitalize}
+.fine{font-size:14px;color:var(--muted);margin-top:10px}
+.saved{font-size:13px;color:var(--muted);text-align:center;margin-top:6px}
+.hidden{display:none !important}
+@media (max-width:380px){.day .v{font-size:13px}.day .t{font-size:10px}}
+</style>
+</head>
+<body>
+<main>
+  <section class="verdict" aria-live="polite">
+    <p class="lead" id="vLead">Para o resto do mês, o mais barato é</p>
+    <p class="pick num" id="vPick">…</p>
+    <p class="sub" id="vSub"></p>
+  </section>
+
+  <section class="panel">
+    <h2>Passe que você tem agora</h2>
+    <div class="row">
+      <label>Tipo<select id="curType">
+        <option value="none">Não tenho passe ativo</option>
+        <option value="t24">Passe 24h</option>
+        <option value="t72">Passe 72h</option>
+        <option value="g1">Por ganho (R$ 36)</option>
+        <option value="g2">Por ganho (R$ 108)</option>
+      </select></label>
+      <label id="boughtWrap">Comprei em<input type="datetime-local" id="curBought"></label>
+      <label id="paidWrap">Paguei (R$)<input type="number" inputmode="decimal" id="curPaid" min="0"></label>
+      <label id="creditWrap">Já faturei com ele (R$)<input type="number" inputmode="decimal" id="curEarned" min="0"></label>
+    </div>
+    <div class="status" id="curStatus"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Quanto você espera ganhar em cada dia da semana</h2>
+    <div class="week" id="week"></div>
+    <div class="row" style="margin-top:12px">
+      <label>Começo a rodar às<input type="time" id="shiftStart"></label>
+      <label>Rodo umas (horas por dia)<input type="number" inputmode="decimal" id="shiftHours" min="1" max="24"></label>
+    </div>
+    <p class="fine">Deixe 0 nos dias de folga. Para mudar um dia específico (feriado, um sábado mais forte), toque nele no calendário.</p>
+  </section>
+
+  <section class="panel">
+    <div class="monthbar">
+      <button type="button" id="prevM" aria-label="Mês anterior">‹</button>
+      <div class="num" id="monthName"></div>
+      <button type="button" id="nextM" aria-label="Próximo mês">›</button>
+    </div>
+    <div class="totals" style="margin:12px 0">
+      <div><span>Já gastei no mês</span><b class="num" id="tSpent"></b></div>
+      <div><span>Ainda vou gastar</span><b class="num" id="tCost"></b></div>
+      <div><span>Total do mês</span><b class="num" id="tTotal"></b></div>
+    </div>
+    <p class="fine" id="tNetLine" style="margin:-4px 0 12px"></p>
+    <label style="margin-bottom:12px">Outros passes que já paguei neste mês (R$)<input type="number" inputmode="decimal" id="spentOther" min="0" placeholder="0"></label>
+    <div class="cal" id="cal"></div>
+    <div class="legend">
+      <span><i style="background:var(--blue-soft);border:1px solid var(--blue)"></i>Passe atual</span>
+      <span><i style="background:var(--green)"></i>Comprar</span>
+      <span><i style="background:var(--green-soft);border:1px solid var(--green)"></i>Coberto</span>
+      <span><i style="background:var(--amber-soft);border:1px solid var(--amber)"></i>Passe vence no meio do dia</span>
+    </div>
+    <div class="editor hidden" id="editor">
+      <p id="edTitle" style="font-weight:600"></p>
+      <div class="row">
+        <label>Estimativa (R$)<input type="number" inputmode="decimal" id="edVal" min="0"></label>
+        <button type="button" id="edOff">Folga</button>
+        <button type="button" id="edReset">Usar o padrão</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Comparando as formas de comprar no resto do mês</h2>
+    <div id="list"></div>
+    <p class="fine">Toque numa opção para ver no calendário em que dias comprar.</p>
+  </section>
+
+  <section class="panel">
+    <details>
+      <summary style="cursor:pointer;font-weight:600;color:var(--muted);min-height:32px">Mudar os valores dos passes</summary>
+      <div class="row" style="margin-top:10px">
+        <label>Passe 24h (R$)<input type="number" inputmode="decimal" id="p24"></label>
+        <label>Passe 72h (R$)<input type="number" inputmode="decimal" id="p72"></label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label>Por ganho: paga (R$)<input type="number" inputmode="decimal" id="g1p"></label>
+        <label>…a cada (R$ ganhos)<input type="number" inputmode="decimal" id="g1e"></label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label>Por ganho: paga (R$)<input type="number" inputmode="decimal" id="g2p"></label>
+        <label>…a cada (R$ ganhos)<input type="number" inputmode="decimal" id="g2e"></label>
+      </div>
+    </details>
+    <p class="fine">A conta considera que você compra o passe na hora de começar a rodar, e que o crédito do passe por ganho que sobra passa para o mês seguinte (por isso ele entra no custo só pelo que foi usado).</p>
+    <p class="saved" id="saved"></p>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const DOW = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+const DOW_LONG = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
+const brl = v => "R$ " + v.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const brl0 = v => "R$ " + Math.round(v).toLocaleString("pt-BR");
+const pad = n => String(n).padStart(2,"0");
+const keyOf = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const fmtDT = d => `${DOW_LONG[d.getDay()]} ${pad(d.getDate())}/${pad(d.getMonth()+1)} às ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const nowLocalInput = () => { const d=new Date(); return `${keyOf(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+
+const today0 = new Date(); today0.setHours(0,0,0,0);
+let state = {
+  week:[0,90,90,90,90,90,100], overrides:{},
+  current:{type:"none", bought:nowLocalInput(), paid:null, earned:0}, spent:{},
+  shiftStart:"06:00", shiftHours:10,
+  prices:{p24:12,p72:32,g1p:36,g1e:280,g2p:108,g2e:880}
+};
+function paidOf(){ const c=state.current, P=state.prices; if(c.paid!=null) return c.paid; return ({t24:P.p24,t72:P.p72,g1:P.g1p,g2:P.g2p})[c.type]||0; }
+let view = {y:today0.getFullYear(), m:today0.getMonth(), strategy:null, sel:null};
+
+/* ---------- salvar ---------- */
+let store = null, saveTimer = null;
+function setSaved(t){ $("saved").textContent = t; }
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async ()=>{
+    const json = JSON.parse(JSON.stringify(state));
+    if (store){ try{ await store.set(json); setSaved("Salvo na sua conta."); return; }catch(e){} }
+    try{ localStorage.setItem("planoPasse", JSON.stringify(json)); setSaved("Salvo neste aparelho."); }catch(e){ setSaved("Não foi possível salvar."); }
+  }, 700);
+}
+function merge(saved){
+  if (!saved || typeof saved!=="object") return;
+  state = {...state, ...saved, current:{...state.current,...(saved.current||{})}, prices:{...state.prices,...(saved.prices||{})}, spent:{...(saved.spent||{})}};
+}
+try{ merge(JSON.parse(localStorage.getItem("planoPasse")||"null")); }catch(e){}
+
+
+
+/* ---------- entradas ---------- */
+const weekBox = $("week");
+[1,2,3,4,5,6,0].forEach(i=>{
+  const l=document.createElement("label");
+  l.innerHTML=`${DOW[i]}<input type="number" inputmode="decimal" min="0" data-dow="${i}">`;
+  weekBox.appendChild(l);
+});
+function fillInputs(){
+  weekBox.querySelectorAll("input").forEach(inp=>inp.value=state.week[+inp.dataset.dow]);
+  $("curType").value=state.current.type; $("curBought").value=state.current.bought; $("curEarned").value=state.current.earned||0; $("curPaid").value=paidOf();
+  $("shiftStart").value=state.shiftStart; $("shiftHours").value=state.shiftHours;
+  for (const k in state.prices) $(k).value=state.prices[k];
+}
+const num = v => Math.max(0, parseFloat(v)||0);
+weekBox.addEventListener("input",e=>{ const i=e.target.dataset.dow; if(i==null)return; state.week[+i]=num(e.target.value); changed(); });
+$("curType").addEventListener("change",e=>{ state.current.type=e.target.value; state.current.paid=null; $("curPaid").value=paidOf(); changed(); });
+$("curPaid").addEventListener("input",e=>{ state.current.paid = e.target.value==="" ? null : num(e.target.value); changed(); });
+$("spentOther").addEventListener("input",e=>{ state.spent[`${view.y}-${pad(view.m+1)}`]=num(e.target.value); render(); scheduleSave(); });
+$("curBought").addEventListener("input",e=>{ state.current.bought=e.target.value; changed(); });
+$("curEarned").addEventListener("input",e=>{ state.current.earned=num(e.target.value); changed(); });
+$("shiftStart").addEventListener("input",e=>{ state.shiftStart=e.target.value||"06:00"; changed(); });
+$("shiftHours").addEventListener("input",e=>{ state.shiftHours=Math.min(24,num(e.target.value))||1; changed(); });
+["p24","p72","g1p","g1e","g2p","g2e"].forEach(k=>$(k).addEventListener("input",e=>{ state.prices[k]=num(e.target.value); changed(); }));
+$("prevM").onclick=()=>{ view.m--; if(view.m<0){view.m=11;view.y--;} view.sel=null; render(); };
+$("nextM").onclick=()=>{ view.m++; if(view.m>11){view.m=0;view.y++;} view.sel=null; render(); };
+function changed(){ view.strategy=null; render(); scheduleSave(); }
+
+/* ---------- modelo ---------- */
+function earnFor(d){ const k=keyOf(d); return k in state.overrides ? state.overrides[k] : (state.week[d.getDay()]||0); }
+function shiftStartOf(d){ const [h,m]=(state.shiftStart||"06:00").split(":").map(Number); const s=new Date(d); s.setHours(h||0,m||0,0,0); return s; }
+function shiftEndOf(d){ return new Date(shiftStartOf(d).getTime()+state.shiftHours*3600e3); }
+
+function currentPass(){
+  const c=state.current, P=state.prices;
+  if (c.type==="t24"||c.type==="t72"){
+    const b=new Date(c.bought); if (isNaN(b)) return {kind:"none"};
+    return {kind:"time", bought:b, expires:new Date(b.getTime()+(c.type==="t24"?24:72)*3600e3), label:c.type==="t24"?"Passe 24h":"Passe 72h"};
+  }
+  if (c.type==="g1"||c.type==="g2") return {kind:"gain", credit:Math.max(0,(c.type==="g1"?P.g1e:P.g2e)-(c.earned||0)), label:c.type==="g1"?`Por ganho ${brl0(P.g1p)}`:`Por ganho ${brl0(P.g2p)}`};
+  return {kind:"none"};
+}
+
+/* dias do mês a partir de hoje com o que sobra a cobrir */
+function buildDays(){
+  const first=new Date(view.y,view.m,1), last=new Date(view.y,view.m+1,0);
+  const cur=currentPass();
+  let credit = cur.kind==="gain" ? cur.credit : 0;
+  // consumir crédito de ganho de hoje até o início do mês (se o mês exibido for futuro)
+  const days=[];
+  for (let d=new Date(today0); d<first; d.setDate(d.getDate()+1)){
+    if (cur.kind==="gain"){ credit=Math.max(0,credit-earnFor(d)); }
+  }
+  for (let i=1;i<=last.getDate();i++){
+    const d=new Date(view.y,view.m,i);
+    const earn=earnFor(d);
+    const o={date:d,key:keyOf(d),earn,past:d<today0,today:+d===+today0,cur:null,warn:null,resid:earn};
+    if (!o.past && earn>0){
+      if (cur.kind==="time"){
+        const sEnd=shiftEndOf(d);
+        if (cur.bought<sEnd && cur.expires>=sEnd){ o.cur="atual"; o.resid=0; }
+        else if (cur.bought<sEnd && cur.expires>shiftStartOf(d) && cur.expires<sEnd){
+          o.warn=`vence ${pad(cur.expires.getHours())}:${pad(cur.expires.getMinutes())}`;
+        }
+      } else if (cur.kind==="gain" && credit>0){
+        if (credit>=earn){ credit-=earn; o.cur="atual"; o.resid=0; }
+        else { o.resid=earn-credit; credit=0; o.warn="crédito acaba"; o.partialGain=true; }
+      }
+    }
+    if (o.past) o.resid=0;
+    days.push(o);
+  }
+  return days;
+}
+
+function strategies(days){
+  const P=state.prices, n=days.length, need=days.map(d=>d.resid>0);
+  const out=[];
+  // só 24h
+  { const buys={}; let cost=0; days.forEach((d,i)=>{ if(need[i]){buys[i]="24h";cost+=P.p24;} });
+    out.push({id:"s24",name:"Passe 24h todo dia",cost,paid:cost,buys,cont:{},note:`${Object.keys(buys).length} passes de ${brl(P.p24)}`}); }
+  // só 72h
+  { const buys={},cont={}; let cost=0,i=0,c=0;
+    while(i<n){ if(need[i]){ buys[i]="72h"; cost+=P.p72; c++; if(i+1<n)cont[i+1]=1; if(i+2<n)cont[i+2]=1; i+=3; } else i++; }
+    out.push({id:"s72",name:"Passe 72h",cost,paid:cost,buys,cont,note:`${c} passes de ${brl(P.p72)}`}); }
+  // melhor combinação (programação dinâmica)
+  { const f=new Array(n+3).fill(0), ch=new Array(n).fill(null);
+    for(let i=n-1;i>=0;i--){
+      if(!need[i]){ f[i]=f[i+1]; continue; }
+      const a=P.p24+f[i+1], b=P.p72+f[Math.min(n,i+3)];
+      if (b<=a){ f[i]=b; ch[i]="72h"; } else { f[i]=a; ch[i]="24h"; }
+    }
+    const buys={},cont={}; let i=0,c24=0,c72=0;
+    while(i<n){ if(ch[i]==="72h"){ buys[i]="72h"; c72++; if(i+1<n)cont[i+1]=1; if(i+2<n)cont[i+2]=1; i+=3; }
+      else if(ch[i]==="24h"){ buys[i]="24h"; c24++; i++; } else i++; }
+    const parts=[]; if(c72)parts.push(`${c72}× 72h`); if(c24)parts.push(`${c24}× 24h`);
+    out.push({id:"mix",name:"Misturar 24h e 72h",cost:f[0],paid:f[0],buys,cont,note:parts.join(" + ")||"nenhuma compra"}); }
+  // por ganho
+  [["g1","g1p","g1e"],["g2","g2p","g2e"]].forEach(([id,pk,ek])=>{
+    const price=P[pk], chunk=P[ek]||1, buys={}; let credit=0, paid=0, cnt=0;
+    days.forEach((d,i)=>{ if(d.resid<=0) return; while(credit<d.resid){ credit+=chunk; paid+=price; cnt++; buys[i]=(buys[i]?buys[i]:0)+1; } credit-=d.resid; });
+    Object.keys(buys).forEach(k=>buys[k]=`R$${Math.round(price)}`+(buys[k]>1?`×${buys[k]}`:""));
+    const used=paid-credit*price/chunk;
+    out.push({id,name:`Por ganho ${brl0(price)}`,cost:used,paid,buys,cont:{},leftover:credit,
+      note: cnt ? `${cnt} compra${cnt>1?"s":""} (${brl(paid)}), sobra ${brl0(credit)} de crédito pro mês seguinte` : "nenhuma compra"});
+  });
+  return out;
+}
+
+/* ---------- desenho ---------- */
+function renderCurrent(){
+  const cur=currentPass(), c=state.current, box=$("curStatus");
+  $("boughtWrap").classList.toggle("hidden", c.type==="none");
+  $("paidWrap").classList.toggle("hidden", c.type==="none");
+  $("creditWrap").classList.toggle("hidden", !(c.type==="g1"||c.type==="g2"));
+  if (cur.kind==="none"){ box.innerHTML="Sem passe ativo. O plano abaixo já começa comprando hoje."; return; }
+  if (cur.kind==="time"){
+    const ms=cur.expires-new Date();
+    if (ms<=0){ box.innerHTML=`<strong>Esse passe já venceu</strong> (${fmtDT(cur.expires)}).`; return; }
+    const h=Math.floor(ms/3600e3), dd=Math.floor(h/24), hh=h%24, mm=Math.floor(ms%3600e3/60e3);
+    const left = dd ? `${dd} dia${dd>1?"s":""} e ${hh}h` : `${hh}h ${pad(mm)}min`;
+    const cov=[]; let warn="";
+    for(let d=new Date(today0); d<=cur.expires; d.setDate(d.getDate()+1)){
+      if(earnFor(d)<=0) continue;
+      const sEnd=shiftEndOf(d);
+      if(cur.bought<sEnd && cur.expires>=sEnd) cov.push(DOW_LONG[d.getDay()]);
+      else if(cur.bought<sEnd && cur.expires>shiftStartOf(d)) warn=` Ele vence no meio do seu turno de ${DOW_LONG[d.getDay()]}: nesse dia você vai precisar de outro passe a partir das ${pad(cur.expires.getHours())}:${pad(cur.expires.getMinutes())}.`;
+    }
+    box.innerHTML=`<span class="big num">Faltam ${left}</span>Vale até ${fmtDT(cur.expires)}. ${cov.length?`Cobre ${cov.length} dia${cov.length>1?"s":""} de trabalho: ${cov.join(", ")}.`:"Não cobre mais nenhum dia inteiro de trabalho."}${warn}`;
+    return;
+  }
+  // ganho
+  let credit=cur.credit, d=new Date(today0), daysCount=0, endDay=null;
+  for(let i=0;i<120 && credit>0;i++){ const e=earnFor(d); if(e>0){ if(credit>=e){credit-=e;daysCount++;} else {endDay=new Date(d);credit=0;break;} } d.setDate(d.getDate()+1); if(credit<=0)break; }
+  box.innerHTML=`<span class="big num">Faltam ${brl0(cur.credit)}</span>${cur.credit<=0?"Seu crédito acabou.":`Pelas suas estimativas, dá para ${daysCount} dia${daysCount!==1?"s":""} inteiro${daysCount!==1?"s":""} de trabalho${endDay?`, e acaba durante ${DOW_LONG[endDay.getDay()]} ${pad(endDay.getDate())}/${pad(endDay.getMonth()+1)}`:""}.`}`;
+}
+
+function render(){
+  renderCurrent();
+  const monthName=new Date(view.y,view.m,1).toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+  $("monthName").textContent=monthName;
+  const days=buildDays(), strats=strategies(days);
+  const sorted=[...strats].sort((a,b)=>a.cost-b.cost), best=sorted[0], second=sorted[1];
+  const shown=strats.find(s=>s.id===view.strategy)||best;
+  const isPast = new Date(view.y,view.m+1,0)<today0;
+
+  // veredito
+  if (isPast){ $("vLead").textContent="Esse mês já passou"; $("vPick").textContent=monthName; $("vSub").textContent="Avance para o mês atual para ver o plano."; }
+  else if (days.every(d=>d.resid<=0)){ $("vLead").textContent="Para o resto do mês"; $("vPick").textContent="Nada a comprar"; $("vSub").textContent="Seu passe atual já cobre os dias de trabalho previstos."; }
+  else {
+    $("vLead").textContent= `Para o resto de ${new Date(view.y,view.m,1).toLocaleDateString("pt-BR",{month:"long"})}, o mais barato é`;
+    $("vPick").textContent=best.name;
+    const diff=second.cost-best.cost;
+    $("vSub").textContent = diff<1 ? `${brl(best.cost)}, praticamente empatado com ${second.name}.` : `${brl(best.cost)}, ${brl(diff)} a menos que ${second.name}.`;
+  }
+
+  // totais
+  const futureEarn=days.filter(d=>!d.past).reduce((s,d)=>s+d.earn,0);
+  const mk=`${view.y}-${pad(view.m+1)}`, bt=new Date(state.current.bought);
+  const curInMonth = state.current.type!=="none" && !isNaN(bt) && bt.getFullYear()===view.y && bt.getMonth()===view.m;
+  const spentCur = curInMonth ? paidOf() : 0, spentOther = state.spent[mk]||0, spent = spentCur + spentOther;
+  if(document.activeElement!==$("spentOther")) $("spentOther").value = spentOther || "";
+  $("tSpent").textContent=brl0(spent); $("tCost").textContent=brl0(shown.cost); $("tTotal").textContent=brl0(spent+shown.cost);
+  $("tNetLine").textContent = futureEarn>0 ? `Faturamento previsto daqui até o fim do mês: ${brl0(futureEarn)}. Tirando o que ainda vai gastar com passe, sobram ${brl0(futureEarn-shown.cost)}.${spentCur?` O “já gastei” inclui os ${brl(spentCur)} do passe atual.`:""}` : "";
+
+  // calendário
+  const cal=$("cal"); cal.innerHTML=DOW.map(d=>`<div class="dow">${d}</div>`).join("");
+  for(let i=0;i<days[0].date.getDay();i++) cal.insertAdjacentHTML("beforeend",`<div class="empty"></div>`);
+  days.forEach((d,i)=>{
+    const b=document.createElement("button"); b.type="button";
+    const cls=["day"]; let tag="";
+    if(d.past) cls.push("past");
+    if(d.today) cls.push("today");
+    if(d.earn<=0) cls.push("off");
+    if(d.key in state.overrides) cls.push("edited");
+    if(view.sel===d.key) cls.push("sel");
+    if(!d.past && d.earn>0){
+      if(shown.buys[i]){ cls.push("buy"); tag=shown.buys[i]; }
+      else if(d.cur){ cls.push("cur"); tag="atual"; }
+      else if(shown.cont[i]){ cls.push("cont"); tag="coberto"; }
+      else if(d.warn){ cls.push("warn"); tag=d.warn; }
+      if(shown.buys[i] && d.warn) tag=shown.buys[i];
+      if(!tag && shown.id.startsWith("g") && d.resid>0){ cls.push("cont"); tag="crédito"; }
+    }
+    b.className=cls.join(" ");
+    b.setAttribute("aria-label",`${DOW_LONG[d.date.getDay()]} ${d.date.getDate()}, ${d.earn>0?brl0(d.earn):"folga"}${tag?", "+tag:""}`);
+    b.innerHTML=`<span class="d">${d.date.getDate()}</span><span class="v num">${d.earn>0?Math.round(d.earn):"folga"}</span><span class="t">${tag}</span>`;
+    b.onclick=()=>{ view.sel = view.sel===d.key?null:d.key; render(); };
+    cal.appendChild(b);
+  });
+
+  // editor do dia
+  const ed=$("editor");
+  if(view.sel){
+    const d=days.find(x=>x.key===view.sel);
+    ed.classList.remove("hidden");
+    $("edTitle").textContent=`${DOW_LONG[d.date.getDay()]}, ${pad(d.date.getDate())}/${pad(d.date.getMonth()+1)} (padrão: ${brl0(state.week[d.date.getDay()])})`;
+    if(document.activeElement!==$("edVal")) $("edVal").value=d.earn;
+  } else ed.classList.add("hidden");
+
+  // lista
+  $("list").innerHTML=sorted.map(s=>`
+    <div class="opt${s===best?" best":""}${s===shown?" shown":""}" data-id="${s.id}" role="button" tabindex="0">
+      <span class="name">${s.name}</span><span class="cost num">${brl(s.cost)}</span>
+      <span class="note">${s.note}</span>
+    </div>`).join("");
+  $("list").querySelectorAll(".opt").forEach(el=>{
+    const go=()=>{ view.strategy=el.dataset.id; render(); };
+    el.onclick=go; el.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault();go();} };
+  });
+}
+
+$("edVal").addEventListener("input",e=>{ if(!view.sel)return; state.overrides[view.sel]=num(e.target.value); view.strategy=null; render(); scheduleSave(); });
+$("edOff").onclick=()=>{ if(!view.sel)return; state.overrides[view.sel]=0; $("edVal").value=0; view.strategy=null; render(); scheduleSave(); };
+$("edReset").onclick=()=>{ if(!view.sel)return; delete state.overrides[view.sel]; $("edVal").blur(); view.strategy=null; render(); scheduleSave(); };
+
+fillInputs(); render();
+setInterval(renderCurrent, 60000);
+if ("serviceWorker" in navigator) { window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }
+</script>
+</body>
+</html>
