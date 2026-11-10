@@ -316,6 +316,26 @@ details summary{cursor:pointer;font-weight:600;min-height:32px}
   </div>
 
   <div class="panel">
+    <h2>Backup dos meus dados</h2>
+    <p class="muted" style="font-size:15px">Salve uma cópia de tudo (passes, histórico, ganhos anotados e ajustes). Se trocar de celular ou apagar o app, é só restaurar.</p>
+    <p class="fine" id="bkLast"></p>
+    <div class="row" style="margin-top:12px">
+      <button type="button" class="primary" id="bkSave">Salvar arquivo de backup</button>
+      <button type="button" id="bkCopy">Copiar como texto</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button type="button" id="bkOpen">Restaurar de um arquivo</button>
+      <button type="button" id="bkPasteBtn">Restaurar de um texto</button>
+    </div>
+    <input type="file" id="bkFile" accept=".json,application/json,text/plain" class="hidden">
+    <div class="hidden stack" id="bkPasteBox" style="margin-top:12px">
+      <label>Cole aqui o texto do backup<textarea id="bkText" rows="5" style="font:15px ui-monospace,Menlo,monospace;padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%;resize:vertical"></textarea></label>
+      <button type="button" class="primary" id="bkRestoreText">Restaurar</button>
+    </div>
+    <p class="alert hidden" id="bkMsg" style="margin-top:12px"></p>
+  </div>
+
+  <div class="panel">
     <h2>Como a conta é feita</h2>
     <p class="muted" style="font-size:15px">O app testa todas as combinações de 24h, 72h e passe por ganho com o que você previu para cada dia e mostra a mais barata. Ele considera que o passe começa a valer na primeira corrida do dia. O crédito do passe por ganho que sobra passa para os dias seguintes, por isso entra no custo só a parte usada. O passe por ganho só é sugerido quando economiza pelo menos R$ 1.</p>
     <button type="button" class="wide danger" id="resetAll">Apagar meus dados</button>
@@ -341,7 +361,7 @@ const today0 = new Date(); today0.setHours(0,0,0,0);
 const DEFAULTS = () => ({
   week:[0,90,90,90,90,90,100], overrides:{},
   current:{type:"none", bought:nowLocalInput(), paid:null, earned:0}, spent:{},
-  shiftStart:"06:00", shiftHours:10, real:{}, useAvg:true, defaultPass:"", history:[],
+  shiftStart:"06:00", shiftHours:10, real:{}, useAvg:true, defaultPass:"", history:[], lastBackup:null,
   prices:{p24:12,p72:32,g1p:36,g1e:280,g2p:108,g2e:880}
 });
 let state = DEFAULTS();
@@ -825,7 +845,59 @@ $("edReset").onclick=()=>{ if(!view.sel)return; delete state.overrides[view.sel]
 
 migrateHistory();
 $("hType").value="t72"; $("hPaid").value=priceOfType("t72"); $("hWhen").value=nowLocalInput();
-fillInputs(); render(); show(location.hash.slice(1));
+/* ---------- backup ---------- */
+function bkMsg(t,ok){ const m=$("bkMsg"); m.textContent=t; m.classList.remove("hidden"); m.style.background = ok===false ? "var(--amber-soft)" : "var(--green-soft)"; }
+function backupText(){ state.lastBackup=new Date().toISOString(); return JSON.stringify({app:"planejador-passes",versao:1,salvoEm:new Date().toISOString(),dados:state},null,1); }
+function markBackup(){ state.lastBackup=new Date().toISOString(); scheduleSave(); renderBackup(); }
+function renderBackup(){
+  const l=state.lastBackup?new Date(state.lastBackup):null;
+  $("bkLast").textContent = l ? `Último backup: ${DOW_LONG[l.getDay()]} ${dm(l)}/${l.getFullYear()} às ${pad(l.getHours())}:${pad(l.getMinutes())}.` : "Você ainda não fez nenhum backup.";
+}
+$("bkSave").onclick=async()=>{
+  const n=new Date(), name=`backup-passes-${keyOf(n)}.json`, txt=backupText();
+  try{
+    if(window.claude && window.claude.use){
+      const dl=await claude.use("downloads");
+      if(dl){ try{ await dl.save({filename:name,data:txt}); markBackup(); bkMsg("Backup salvo. Guarde o arquivo num lugar seguro, como o Google Drive ou o WhatsApp para você mesmo."); }
+        catch(e){ if(e&&e.code==="declined") bkMsg("Backup cancelado.",false); else bkMsg("Não deu para salvar o arquivo aqui. Use “Copiar como texto”.",false); }
+        return; }
+    }
+    const url=URL.createObjectURL(new Blob([txt],{type:"application/json"}));
+    const a=document.createElement("a"); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    markBackup(); bkMsg("Backup salvo na pasta de downloads do celular. Mande para você mesmo no WhatsApp ou salve no Google Drive para não perder.");
+  }catch(e){ bkMsg("Não deu para salvar o arquivo. Use “Copiar como texto”.",false); }
+};
+$("bkCopy").onclick=async()=>{
+  const txt=backupText();
+  try{ await navigator.clipboard.writeText(txt); markBackup(); bkMsg("Texto do backup copiado. Cole numa conversa sua no WhatsApp ou num bloco de notas e guarde."); }
+  catch(e){ $("bkPasteBox").classList.remove("hidden"); $("bkText").value=txt; $("bkText").select(); markBackup(); bkMsg("Selecionei o texto abaixo. Copie e guarde num lugar seguro.",false); }
+};
+$("bkOpen").onclick=()=>$("bkFile").click();
+$("bkPasteBtn").onclick=()=>{ $("bkPasteBox").classList.toggle("hidden"); $("bkText").value=""; $("bkText").focus(); };
+let pendingRestore=null;
+function tryRestore(txt){
+  let obj; try{ obj=JSON.parse(txt); }catch(e){ bkMsg("Esse arquivo ou texto não é um backup válido.",false); return; }
+  const dados = obj && obj.app==="planejador-passes" ? obj.dados : (obj && obj.week && obj.prices ? obj : null);
+  if(!dados || typeof dados!=="object"){ bkMsg("Esse arquivo não é um backup deste app.",false); return; }
+  if(pendingRestore!==txt){
+    pendingRestore=txt;
+    const when=obj.salvoEm?new Date(obj.salvoEm):null, n=Array.isArray(dados.history)?dados.history.length:0;
+    bkMsg(`Backup${when?` de ${dm(when)}/${when.getFullYear()}`:""} com ${n} passe${n!==1?"s":""} no histórico. Isso vai substituir os dados atuais. Toque de novo em restaurar para confirmar.`,false);
+    return;
+  }
+  pendingRestore=null;
+  state=DEFAULTS(); merge(dados); fillInputs(); view.strategy=null; view.sel=null; render(); scheduleSave(); renderBackup();
+  $("bkPasteBox").classList.add("hidden");
+  bkMsg("Dados restaurados com sucesso.");
+}
+$("bkRestoreText").onclick=()=>tryRestore($("bkText").value.trim());
+$("bkFile").addEventListener("change",e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f) return;
+  const r=new FileReader(); r.onload=()=>{ const t=String(r.result); pendingRestore=null; tryRestore(t); if(pendingRestore===t){ $("bkPasteBox").classList.remove("hidden"); $("bkText").value=t; } }; r.readAsText(f); e.target.value="";
+});
+
+fillInputs(); render(); renderBackup(); show(location.hash.slice(1));
 setInterval(renderHoje, 60000);
 if ("serviceWorker" in navigator) { window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }
 </script>
