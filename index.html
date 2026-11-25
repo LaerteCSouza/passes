@@ -104,6 +104,13 @@ button.danger{color:#B3261E;border-color:currentColor}
 details summary{cursor:pointer;font-weight:600;min-height:32px}
 .saved{font-size:13px;color:var(--muted);text-align:center;margin-top:4px}
 .hidden{display:none !important}
+details.collapse > summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;min-height:44px}
+details.collapse > summary::-webkit-details-marker{display:none}
+details.collapse .sumT{display:block;font-size:16px;font-weight:600;color:var(--muted)}
+details.collapse .sumS{display:block;font-size:15px;color:var(--ink);margin-top:2px}
+details.collapse .chev{width:28px;height:28px;flex:none;stroke:var(--ink);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s}
+details.collapse[open] .chev{transform:rotate(180deg)}
+.ver{font-size:12px;color:var(--muted);text-align:center;margin-top:8px}
 .why{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--bg);font-size:15px;color:var(--ink)}
 .why b{font-weight:600}
 .alert{padding:12px;border-radius:10px;font-size:16px}
@@ -273,11 +280,14 @@ details summary{cursor:pointer;font-weight:600;min-height:32px}
     </div>
   </div>
 
-  <div class="panel">
-    <h2>Formas de comprar no resto do mês</h2>
-    <div id="list"></div>
+  <details class="panel collapse" id="formsBox">
+    <summary>
+      <span><span class="sumT">Formas de comprar no resto do mês</span><span class="sumS" id="formsSum"></span></span>
+      <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    </summary>
+    <div id="list" style="margin-top:10px"></div>
     <p class="fine">Toque numa opção para ver no calendário em que dias comprar.</p>
-  </div>
+  </details>
 </section>
 
 <!-- ============ AJUSTES ============ -->
@@ -340,6 +350,7 @@ details summary{cursor:pointer;font-weight:600;min-height:32px}
     <p class="muted" style="font-size:15px">O app testa todas as combinações de 24h, 72h e passe por ganho com o que você previu para cada dia e mostra a mais barata. Ele considera que o passe começa a valer na primeira corrida do dia. O crédito do passe por ganho que sobra passa para os dias seguintes, por isso entra no custo só a parte usada. O passe por ganho só é sugerido quando economiza pelo menos R$ 1.</p>
     <button type="button" class="wide danger" id="resetAll">Apagar meus dados</button>
     <p class="saved" id="saved"></p>
+    <p class="ver">Versão 9 · 10/11/2026</p>
   </div>
 </section>
 </main>
@@ -801,6 +812,7 @@ function renderMes(){
     if(document.activeElement!==$("edVal")) $("edVal").value = d.key in state.overrides ? state.overrides[d.key] : Math.round(planned(d.date));
   } else ed.classList.add("hidden");
 
+  $("formsSum").textContent = `Mais barata: ${P.best.name} · ${brl(P.best.cost)}. Toque para ver as ${P.sorted.length} opções.`;
   $("list").innerHTML=P.sorted.map(s=>`
     <div class="opt${s===P.best?" best":""}${s===shown?" shown":""}" data-id="${s.id}" role="button" tabindex="0">
       <span class="name">${s.name}</span><span class="cost num">${brl(s.cost)}</span>
@@ -899,7 +911,7 @@ $("bkFile").addEventListener("change",e=>{
 
 fillInputs(); render(); renderBackup(); show(location.hash.slice(1));
 setInterval(renderHoje, 60000);
-if ("serviceWorker" in navigator) { window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }
+if ("serviceWorker" in navigator) { window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").then(r=>r.update()).catch(()=>{})); }
 </script>
 </body>
 </html>
