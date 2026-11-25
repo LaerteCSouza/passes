@@ -429,7 +429,7 @@ details[open] > summary .chev2{transform:rotate(180deg)}
     <p class="muted" style="font-size:15px">O app testa todas as combinações de 24h, 72h e passe por ganho com o que você previu para cada dia e mostra a mais barata. Ele considera que o passe começa a valer na primeira corrida do dia. O crédito do passe por ganho que sobra passa para os dias seguintes, por isso entra no custo só a parte usada. O passe por ganho só é sugerido quando economiza pelo menos R$ 1.</p>
     <button type="button" class="wide danger" id="resetAll">Apagar meus dados</button>
     <p class="saved" id="saved"></p>
-    <p class="ver">Versão 14</p>
+    <p class="ver">Versão 16</p>
   </div>
 </section>
 </main>
@@ -1070,7 +1070,8 @@ function idealFor(y,m){
         if(earnFor(d)>0 && x.d<shiftEndOf(d) && exp>shiftStartOf(d)) cov.add(keyOf(d));
       }
     } else {
-      const nx=ents.find(o=>o.d>x.d), stop=nx?new Date(nx.d):new Date(lim.getTime()+864e5);
+      const nx=ents.find(o=>o.d>x.d); let stop=nx?new Date(nx.d):new Date(lim.getTime()+864e5);
+      const ge=gainEnd(x, nx?nx.d:null); if(ge && ge.date){ const s2=new Date(ge.date); s2.setDate(s2.getDate()+1); if(s2<stop) stop=s2; }
       for(let d=new Date(start); d<stop && d<=lim; d.setDate(d.getDate()+1)) if(earnFor(d)>0) cov.add(keyOf(d));
     }
   });
@@ -1095,6 +1096,26 @@ function idealBlock(y,m,paid){
     <p style="margin-top:4px">${msg}</p>
     <p class="fine" style="margin-top:6px">Ideal para os ${ip.n} dias de trabalho cobertos pelos passes que você registrou (${dm(ip.from)} a ${dm(ip.to)}): ${ip.note}. Usa o ganho anotado de cada dia, ou a previsão nos dias sem anotação.</p></div>`;
 }
+/* Passe por ganho: até quando dura, pelos ganhos anotados e pela previsão */
+function gainEnd(x, nextStart){
+  const P=state.prices, e=Math.max(1,x.type==="g1"?P.g1e:P.g2e), isCur=x.id===state.current.histId;
+  let rem=e, d=new Date(x.when); d.setHours(0,0,0,0);
+  if(isCur){ rem=e-(state.current.earned||0); d=new Date(today0); if(isClosed(today0)) d.setDate(d.getDate()+1); }
+  const ns=nextStart?new Date(nextStart):null; if(ns) ns.setHours(0,0,0,0);
+  let usedReal=false, usedPlan=false;
+  for(let i=0;i<400;i++){
+    if(ns && d>=ns){ const pd=new Date(ns); return {date:null, txt:`usado até ${dm(pd)}`, label:"Usado até", when:`${DOW[pd.getDay()].toLowerCase()} ${dm(pd)}`, how:"Nesse dia você registrou o próximo passe."}; }
+    const k=keyOf(d), v=earnFor(d);
+    if(v>0){ if(isClosed(d)&&(k in state.real)) usedReal=true; else usedPlan=true; rem-=v; }
+    if(rem<=0){
+      const past = d<today0 || (+d===+today0 && isClosed(d));
+      const how = usedPlan ? (usedReal?"Calculado pelos ganhos que você anotou e pela sua previsão de ganho.":"Calculado pela sua previsão de ganho por dia (Ajustes).") : "Calculado pelos ganhos que você anotou.";
+      return {date:new Date(d), txt: past?`acabou ~${dm(d)}`:`deve acabar ~${dm(d)}`, label: past?"Acabou por volta de":"Deve acabar por volta de", when:`${DOW[d.getDay()].toLowerCase()} ${dm(d)}`, how: (isCur?`Faltam ${brl0(e-(state.current.earned||0))} para faturar. `:`O crédito é de ${brl0(e)} em ganhos. `)+how};
+    }
+    d.setDate(d.getDate()+1);
+  }
+  return null;
+}
 function weekStart(d){ const x=new Date(d); x.setHours(0,0,0,0); const k=(x.getDay()+6)%7; x.setDate(x.getDate()-k); return x; }
 const CHEV='<svg class="chev2" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 function renderHist(){
@@ -1109,11 +1130,11 @@ function renderHist(){
   if(!histInit){ histInit=true; histOpen.add("m"+thisM); histOpen.add("w"+keyOf(wkNow)); }
   // validação: passe por tempo começando antes do anterior acabar
   let prevEnd=null; const info={};
-  all.forEach(x=>{
-    const d=new Date(x.when); let until=null, wa="";
+  all.forEach((x,ix)=>{
+    const d=new Date(x.when); let until=null, wa="", gain=null;
     if(HOURS[x.type]){ until=new Date(d.getTime()+HOURS[x.type]*3600e3); if(prevEnd && d<prevEnd) wa=`Começou antes do passe anterior acabar (${fmtShort(prevEnd)}). Confira se a data está certa.`; prevEnd=until; }
-    else if(x.type!=="outro") prevEnd=null;
-    info[x.id]={until,wa};
+    else if(x.type!=="outro"){ prevEnd=null; const nx=all.slice(ix+1).find(o=>o.type!=="outro"); gain=gainEnd(x, nx?new Date(nx.when):null); }
+    info[x.id]={until,wa,gain};
   });
   // agrupa: mês > semana > dia
   const months={};
@@ -1132,21 +1153,25 @@ function renderHist(){
       const isNow=ws.getTime()===wkNow.getTime();
       const days=Object.keys(W.days).map(dk=>{
         const L=W.days[dk], [y2,m2,d2]=dk.split("-").map(Number), dd=new Date(y2,m2-1,d2);
-        const names=L.map(x=>(HTYPE[x.type]||x.type).replace("Passe ","")).join(" + ");
+        const names=L.map(x=>{ const f=info[x.id], nm=(HTYPE[x.type]||x.type).replace("Passe ","");
+          if(f.until) return `${nm} · ${f.until<new Date()?"valeu":"vale"} até ${fmtShort(f.until)}`;
+          if(f.gain) return `${nm} · ${f.gain.txt}`;
+          return nm; }).join(" + ");
         const flags=L.map(x=>`<span class="dot ${dotOf(x)}"></span>`).join("");
         const det=L.map(x=>{
           const f=info[x.id], arm=delArmed===x.id, cur=x.id===state.current.histId;
           return `<div class="hDetail">
             <div class="kv"><span><b>${HTYPE[x.type]||x.type}</b>${cur?" · atual":""}</span><b>${brl(+x.paid||0)}</b></div>
             ${x.type==="outro"?`<div class="kv"><span>Valor total anotado antes do histórico</span><b></b></div>`:`<div class="kv"><span>Começou</span><b>${fmtShort(new Date(x.when))}</b></div>`}
-            ${f.until?`<div class="kv"><span>Venceu / vence</span><b>${fmtShort(f.until)}</b></div>`:""}
+            ${f.until?`<div class="kv"><span>${f.until<new Date()?"Venceu":"Vale até"}</span><b>${fmtShort(f.until)}</b></div>`:""}
+            ${f.gain?`<div class="kv"><span>${f.gain.label}</span><b>${f.gain.when}</b></div><p class="fine" style="margin-top:2px">${f.gain.how}</p>`:""}
             ${x.rec?`<div class="kv"><span>Recomendado</span><b>${x.rec.type===x.type?'<span class="badge good">✓ Era o recomendado</span>':`<span class="badge diff">${TYPE_NAME[x.rec.type]||x.rec.type}</span>`}</b></div>`:""}
             ${f.wa?`<p class="wa" style="color:var(--amber);font-size:14px;margin-top:4px">${f.wa}</p>`:""}
             ${editId===x.id ? editForm(x) : `<div class="act"><button type="button" data-edit="${x.id}">Editar</button><button type="button" data-del="${x.id}"${arm?' class="danger"':""}>${arm?"Toque de novo para apagar":"Apagar"}</button></div>`}
           </div>`; }).join("");
         return `<details class="hDay" data-k="d${x_id(L)}"${op("d"+x_id(L))}><summary>${flags}<span class="grow">${DOW[dd.getDay()]} ${dm(dd)}<span class="sub2">${names}</span></span><span class="amt">${brl(sum(L))}</span>${CHEV}</summary>${det}</details>`;
       }).join("");
-      const lbl = isNow ? "Esta semana" : `${dm(ws)} a ${dm(we)}`;
+      const lbl = isNow ? "Esta semana" : (ws.getMonth()===we.getMonth() ? `Semana de ${pad(ws.getDate())} a ${dm(we)}` : `Semana de ${dm(ws)} a ${dm(we)}`);
       return `<details class="hWeek" data-k="w${wk}"${op("w"+wk)}><summary><span class="grow"><span class="t">${lbl}</span><span class="sub2">${isNow?`${dm(ws)} a ${dm(we)} · `:""}${W.list.length} passe${W.list.length>1?"s":""}</span></span><span class="amt">${brl(sum(W.list))}</span>${CHEV}</summary><div class="hDays">${days}</div></details>`;
     }).join("");
     return `<details class="hMonth" data-k="m${mk}"${op("m"+mk)}><summary><span class="grow"><span class="t">${nm.charAt(0).toUpperCase()+nm.slice(1)} ${yy}</span><span class="sub2">${M.list.length} passe${M.list.length>1?"s":""}</span></span><span class="amt">${brl(sum(M.list))}</span>${CHEV}</summary>
