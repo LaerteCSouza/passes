@@ -317,6 +317,7 @@ details[open] > summary .chev2{transform:rotate(180deg)}
       <span><i style="background:var(--line)"></i>Real: ganho anotado</span>
     </div>
     <p class="fine">Toque num dia para mudar a estimativa dele ou anotar quanto ganhou.</p>
+    <p class="fine" id="calSrc"></p>
     <div class="editor hidden" id="editor">
       <p id="edTitle" style="font-weight:600"></p>
       <div class="row" id="edRealRow">
@@ -375,7 +376,7 @@ details[open] > summary .chev2{transform:rotate(180deg)}
     <h2>Quanto você espera ganhar em cada dia</h2>
     <div class="week" id="week"></div>
     <p class="fine">Deixe 0 nos dias de folga.</p>
-    <label class="check"><input type="checkbox" id="useAvg">Usar minhas médias reais quando eu tiver anotado pelo menos 2 dias daquele dia da semana</label>
+    <label class="check"><input type="checkbox" id="useAvg">Trocar meus valores acima pelas minhas médias reais (quando eu tiver anotado pelo menos 2 dias daquele dia da semana)</label>
     <p class="fine">A média usa os ganhos que você anotou nas últimas 8 semanas.</p>
   </div>
 
@@ -429,7 +430,7 @@ details[open] > summary .chev2{transform:rotate(180deg)}
     <p class="muted" style="font-size:15px">O app testa todas as combinações de 24h, 72h e passe por ganho com o que você previu para cada dia e mostra a mais barata. Ele considera que o passe começa a valer na primeira corrida do dia. O crédito do passe por ganho que sobra passa para os dias seguintes, por isso entra no custo só a parte usada. O passe por ganho só é sugerido quando economiza pelo menos R$ 1.</p>
     <button type="button" class="wide danger" id="resetAll">Apagar meus dados</button>
     <p class="saved" id="saved"></p>
-    <p class="ver">Versão 17</p>
+    <p class="ver">Versão 18</p>
   </div>
 </section>
 </main>
@@ -451,7 +452,7 @@ const today0 = new Date(); today0.setHours(0,0,0,0);
 const DEFAULTS = () => ({
   week:[0,90,90,90,90,90,100], overrides:{},
   current:{type:"none", bought:nowLocalInput(), paid:null, earned:0}, spent:{},
-  shiftStart:"06:00", shiftHours:10, real:{}, useAvg:true, defaultPass:"", history:[], lastBackup:null, lastRec:null, onboarded:false, closed:{},
+  shiftStart:"06:00", shiftHours:10, real:{}, useAvg:false, avgV2:true, defaultPass:"", history:[], lastBackup:null, lastRec:null, onboarded:false, closed:{},
   prices:{p24:12,p72:32,g1p:36,g1e:280,g2p:108,g2e:880}
 });
 let state = DEFAULTS();
@@ -490,6 +491,8 @@ function scheduleSave(){
 function merge(saved){
   if (!saved || typeof saved!=="object") return;
   state = {...state, ...saved, current:{...state.current,...(saved.current||{})}, prices:{...state.prices,...(saved.prices||{})}, spent:{...(saved.spent||{})}, overrides:{...(saved.overrides||{})}, real:{...(saved.real||{})}, closed:{...(saved.closed||{})}, history:Array.isArray(saved.history)?saved.history.slice():[]};
+  // a partir da versão 18 a previsão usa os valores de Ajustes, a não ser que você ligue as médias
+  if(!saved.avgV2) state.useAvg=false; state.avgV2=true;
   migrateHistory();
 }
 try{ merge(JSON.parse(localStorage.getItem("planoPasse")||"null")); }catch(e){}
@@ -1010,6 +1013,8 @@ function renderMes(){
   let realSum=0, realN=0;
   P.month.forEach(d=>{ if(d.key in state.real){ realSum+=state.real[d.key]; realN++; } });
   $("tRealLine").textContent = realN ? `Já anotado neste mês: ${brl0(realSum)} em ${realN} dia${realN>1?"s":""}.` : "";
+  { const usingAvg = state.useAvg && AVG.some((v,i)=>v!=null && state.week[i]>0), nOv=Object.keys(state.overrides).length;
+    $("calSrc").innerHTML = (usingAvg ? "A previsão está usando as suas <b>médias reais</b> nos dias da semana que já têm anotações (dá para desligar em Ajustes)." : "A previsão está usando os <b>valores que você colocou em Ajustes</b>.") + (nOv ? " Dias com o valor sublinhado foram mudados por você no calendário." : "") + " Dias que já passaram mostram o ganho anotado."; }
   const cal=$("cal"); cal.innerHTML=DOW.map(d=>`<div class="dow">${d}</div>`).join("");
   for(let i=0;i<P.days[0].date.getDay();i++) cal.insertAdjacentHTML("beforeend",`<div class="empty"></div>`);
   P.days.forEach((d,i)=>{
