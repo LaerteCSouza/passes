@@ -1,5 +1,5 @@
-// Versão 16: com internet, sempre busca a versão nova; sem internet, usa a cópia guardada.
-const CACHE = "passes-v16";
+// Versão 17: com internet, sempre busca a versão nova; sem internet, usa a cópia guardada.
+const CACHE = "passes-v17";
 const FILES = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

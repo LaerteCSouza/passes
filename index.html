@@ -429,7 +429,7 @@ details[open] > summary .chev2{transform:rotate(180deg)}
     <p class="muted" style="font-size:15px">O app testa todas as combinações de 24h, 72h e passe por ganho com o que você previu para cada dia e mostra a mais barata. Ele considera que o passe começa a valer na primeira corrida do dia. O crédito do passe por ganho que sobra passa para os dias seguintes, por isso entra no custo só a parte usada. O passe por ganho só é sugerido quando economiza pelo menos R$ 1.</p>
     <button type="button" class="wide danger" id="resetAll">Apagar meus dados</button>
     <p class="saved" id="saved"></p>
-    <p class="ver">Versão 16</p>
+    <p class="ver">Versão 17</p>
   </div>
 </section>
 </main>
@@ -574,6 +574,7 @@ function editForm(x){
     ${isOutro?"":`<label>Tipo<select id="eType">${["t24","t72","g1","g2"].map(t=>`<option value="${t}"${t===x.type?" selected":""}>${TYPE_NAME[t]}</option>`).join("")}</select></label>
     <label>Começou a valer em<input type="datetime-local" id="eWhen" value="${x.when}"></label>`}
     <label>Paguei (R$)<input type="number" inputmode="decimal" id="ePaid" min="0" value="${+x.paid||0}"></label>
+    ${(x.type==="g1"||x.type==="g2")?`<label>Acabou de verdade em (só para passe por ganho)<input type="date" id="eEnd" value="${x.realEnd||""}"></label><p class="fine" style="margin:0">Deixe em branco se ainda não acabou. Se você registrar o próximo passe, o app usa a data dele.</p>`:""}
     <p class="fine" id="eMsg" style="margin:0">${x.id===state.current.histId?"Esse é o seu passe atual: a mudança também vale na tela Hoje.":""}</p>
     <div class="row"><button type="button" class="primary" data-save="${x.id}">Salvar</button><button type="button" data-cancel="1">Cancelar</button></div>
   </div>`;
@@ -594,6 +595,8 @@ $("histList").addEventListener("click",e=>{
       x.type=$("eType").value; x.when=w;
     }
     x.paid=num($("ePaid").value);
+    if($("eEnd")){ const v=$("eEnd").value; if(v && (x.type==="g1"||x.type==="g2")) x.realEnd=v; else delete x.realEnd; }
+    if(x.type!=="g1" && x.type!=="g2") delete x.realEnd;
     if(x.id===state.current.histId){ state.current.type=x.type; state.current.bought=x.when; state.current.paid=x.paid; state.lastRec=null; fillInputs(); }
     editId=null; view.strategy=null; render(); scheduleSave(); return;
   }
@@ -1071,7 +1074,7 @@ function idealFor(y,m){
       }
     } else {
       const nx=ents.find(o=>o.d>x.d); let stop=nx?new Date(nx.d):new Date(lim.getTime()+864e5);
-      const ge=gainEnd(x, nx?nx.d:null); if(ge && ge.date){ const s2=new Date(ge.date); s2.setDate(s2.getDate()+1); if(s2<stop) stop=s2; }
+      const gr=gainReal(x, nx?nx.d:null), ge = gr.date ? {date:gr.date} : gainEnd(x, nx?nx.d:null); if(ge && ge.date){ const s2=new Date(ge.date); s2.setDate(s2.getDate()+1); if(s2<stop) stop=s2; }
       for(let d=new Date(start); d<stop && d<=lim; d.setDate(d.getDate()+1)) if(earnFor(d)>0) cov.add(keyOf(d));
     }
   });
@@ -1116,6 +1119,39 @@ function gainEnd(x, nextStart){
   }
   return null;
 }
+/* Previsão: só pela previsão de ganho (Ajustes/calendário), contando do dia da compra */
+function gainForecast(x){
+  const P=state.prices, e=Math.max(1,x.type==="g1"?P.g1e:P.g2e);
+  let rem=e, d=new Date(x.when); d.setHours(0,0,0,0);
+  for(let i=0;i<400;i++){ const k=keyOf(d), v = (k in state.overrides) ? state.overrides[k] : planned(d); if(v>0){ rem-=v; if(rem<=0) return new Date(d); } d.setDate(d.getDate()+1); }
+  return null;
+}
+/* Real: data que você marcou, ou o dia em que o próximo passe começou, ou pelos ganhos anotados */
+function gainReal(x, nextStart){
+  if(x.realEnd){ const [y,m,d]=x.realEnd.split("-").map(Number); return {date:new Date(y,m-1,d), how:"você marcou"}; }
+  if(nextStart){ const d=new Date(nextStart); d.setHours(0,0,0,0); return {date:d, how:"dia em que o próximo passe começou"}; }
+  const P=state.prices, e=Math.max(1,x.type==="g1"?P.g1e:P.g2e);
+  let rem=e, d=new Date(x.when); d.setHours(0,0,0,0);
+  for(let i=0;i<400 && isClosed(d);i++){
+    const k=keyOf(d), v=earnFor(d);
+    if(v>0 && !(k in state.real)) break; // dia sem anotação: não dá para afirmar
+    rem-=v; if(rem<=0) return {date:new Date(d), how:"pelos ganhos que você anotou"};
+    d.setDate(d.getDate()+1);
+  }
+  return {date:null};
+}
+function gainLines(x,g){
+  const fmt=d=>`${DOW[d.getDay()].toLowerCase()} ${dm(d)}`;
+  let s=`<div class="kv"><span>Previsto para acabar</span><b>${g.prev?"~"+fmt(g.prev):"—"}</b></div>`;
+  if(g.real.date){
+    s+=`<div class="kv"><span>Acabou de verdade</span><b>${fmt(g.real.date)}</b></div>`;
+    let cmp=""; if(g.prev){ const dd=Math.round((g.real.date-g.prev)/864e5); cmp = dd===0?" Acabou no dia previsto.": dd>0?` Durou ${dd} dia${dd>1?"s":""} a mais que o previsto.`:` Acabou ${-dd} dia${dd<-1?"s":""} antes do previsto.`; }
+    s+=`<p class="fine" style="margin-top:2px">Previsto: pela sua previsão de ganho. Real: ${g.real.how}.${cmp}</p>`;
+  } else {
+    s+=`<div class="kv"><span>Acabou de verdade</span><b>ainda em uso</b></div><p class="fine" style="margin-top:2px">Previsto: pela sua previsão de ganho. A data real aparece quando você registrar o próximo passe, ou em Editar.</p>`;
+  }
+  return s;
+}
 function weekStart(d){ const x=new Date(d); x.setHours(0,0,0,0); const k=(x.getDay()+6)%7; x.setDate(x.getDate()-k); return x; }
 const CHEV='<svg class="chev2" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 function renderHist(){
@@ -1133,7 +1169,7 @@ function renderHist(){
   all.forEach((x,ix)=>{
     const d=new Date(x.when); let until=null, wa="", gain=null;
     if(HOURS[x.type]){ until=new Date(d.getTime()+HOURS[x.type]*3600e3); if(prevEnd && d<prevEnd) wa=`Começou antes do passe anterior acabar (${fmtShort(prevEnd)}). Confira se a data está certa.`; prevEnd=until; }
-    else if(x.type!=="outro"){ prevEnd=null; const nx=all.slice(ix+1).find(o=>o.type!=="outro"); gain=gainEnd(x, nx?new Date(nx.when):null); }
+    else if(x.type!=="outro"){ prevEnd=null; const nx=all.slice(ix+1).find(o=>o.type!=="outro"); gain={prev:gainForecast(x), real:gainReal(x, nx?new Date(nx.when):null)}; }
     info[x.id]={until,wa,gain};
   });
   // agrupa: mês > semana > dia
@@ -1155,7 +1191,7 @@ function renderHist(){
         const L=W.days[dk], [y2,m2,d2]=dk.split("-").map(Number), dd=new Date(y2,m2-1,d2);
         const names=L.map(x=>{ const f=info[x.id], nm=(HTYPE[x.type]||x.type).replace("Passe ","");
           if(f.until) return `${nm} · ${f.until<new Date()?"valeu":"vale"} até ${fmtShort(f.until)}`;
-          if(f.gain) return `${nm} · ${f.gain.txt}`;
+          if(f.gain) return `${nm} · ${f.gain.real.date?`acabou ${dm(f.gain.real.date)}`:(f.gain.prev?`previsto ~${dm(f.gain.prev)}`:"em uso")}`;
           return nm; }).join(" + ");
         const flags=L.map(x=>`<span class="dot ${dotOf(x)}"></span>`).join("");
         const det=L.map(x=>{
@@ -1164,7 +1200,7 @@ function renderHist(){
             <div class="kv"><span><b>${HTYPE[x.type]||x.type}</b>${cur?" · atual":""}</span><b>${brl(+x.paid||0)}</b></div>
             ${x.type==="outro"?`<div class="kv"><span>Valor total anotado antes do histórico</span><b></b></div>`:`<div class="kv"><span>Começou</span><b>${fmtShort(new Date(x.when))}</b></div>`}
             ${f.until?`<div class="kv"><span>${f.until<new Date()?"Venceu":"Vale até"}</span><b>${fmtShort(f.until)}</b></div>`:""}
-            ${f.gain?`<div class="kv"><span>${f.gain.label}</span><b>${f.gain.when}</b></div><p class="fine" style="margin-top:2px">${f.gain.how}</p>`:""}
+            ${f.gain?gainLines(x,f.gain):""}
             ${x.rec?`<div class="kv"><span>Recomendado</span><b>${x.rec.type===x.type?'<span class="badge good">✓ Era o recomendado</span>':`<span class="badge diff">${TYPE_NAME[x.rec.type]||x.rec.type}</span>`}</b></div>`:""}
             ${f.wa?`<p class="wa" style="color:var(--amber);font-size:14px;margin-top:4px">${f.wa}</p>`:""}
             ${editId===x.id ? editForm(x) : `<div class="act"><button type="button" data-edit="${x.id}">Editar</button><button type="button" data-del="${x.id}"${arm?' class="danger"':""}>${arm?"Toque de novo para apagar":"Apagar"}</button></div>`}
