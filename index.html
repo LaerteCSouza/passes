@@ -429,7 +429,7 @@ details[open] > summary .chev2{transform:rotate(180deg)}
     <p class="muted" style="font-size:15px">O app testa todas as combinações de 24h, 72h e passe por ganho com o que você previu para cada dia e mostra a mais barata. Ele considera que o passe começa a valer na primeira corrida do dia. O crédito do passe por ganho que sobra passa para os dias seguintes, por isso entra no custo só a parte usada. O passe por ganho só é sugerido quando economiza pelo menos R$ 1.</p>
     <button type="button" class="wide danger" id="resetAll">Apagar meus dados</button>
     <p class="saved" id="saved"></p>
-    <p class="ver">Versão 13</p>
+    <p class="ver">Versão 14</p>
   </div>
 </section>
 </main>
@@ -567,7 +567,36 @@ $("hAdd").onclick=()=>{
 let delArmed=null;
 const histOpen=new Set(); let histInit=false;
 $("histList").addEventListener("toggle",e=>{ const d=e.target; if(!d.dataset||!d.dataset.k) return; if(d.open) histOpen.add(d.dataset.k); else histOpen.delete(d.dataset.k); },true);
+let editId=null;
+function editForm(x){
+  const isOutro=x.type==="outro";
+  return `<div class="stack editBox" style="margin-top:10px;padding:12px;border-radius:10px;background:var(--bg)">
+    ${isOutro?"":`<label>Tipo<select id="eType">${["t24","t72","g1","g2"].map(t=>`<option value="${t}"${t===x.type?" selected":""}>${TYPE_NAME[t]}</option>`).join("")}</select></label>
+    <label>Começou a valer em<input type="datetime-local" id="eWhen" value="${x.when}"></label>`}
+    <label>Paguei (R$)<input type="number" inputmode="decimal" id="ePaid" min="0" value="${+x.paid||0}"></label>
+    <p class="fine" id="eMsg" style="margin:0">${x.id===state.current.histId?"Esse é o seu passe atual: a mudança também vale na tela Hoje.":""}</p>
+    <div class="row"><button type="button" class="primary" data-save="${x.id}">Salvar</button><button type="button" data-cancel="1">Cancelar</button></div>
+  </div>`;
+}
+$("histList").addEventListener("change",e=>{
+  if(e.target.id!=="eType") return;
+  const x=state.history.find(o=>o.id===editId); if(!x) return;
+  const p=$("ePaid"); if(+p.value===priceOfType(x.type) || !p.value) p.value=priceOfType(e.target.value);
+});
 $("histList").addEventListener("click",e=>{
+  const ed=e.target.closest("button[data-edit]"); if(ed){ editId=ed.dataset.edit; delArmed=null; render(); setTimeout(()=>{ const f=$("ePaid"); if(f) f.closest(".editBox").scrollIntoView({behavior:"smooth",block:"center"}); },50); return; }
+  if(e.target.closest("button[data-cancel]")){ editId=null; render(); return; }
+  const sv=e.target.closest("button[data-save]");
+  if(sv){
+    const x=state.history.find(o=>o.id===sv.dataset.save); if(!x){ editId=null; render(); return; }
+    if(x.type!=="outro"){
+      const w=$("eWhen").value; if(!w){ $("eMsg").textContent="Informe quando o passe começou a valer."; $("eWhen").focus(); return; }
+      x.type=$("eType").value; x.when=w;
+    }
+    x.paid=num($("ePaid").value);
+    if(x.id===state.current.histId){ state.current.type=x.type; state.current.bought=x.when; state.current.paid=x.paid; state.lastRec=null; fillInputs(); }
+    editId=null; view.strategy=null; render(); scheduleSave(); return;
+  }
   const b=e.target.closest("button[data-del]"); if(!b) return;
   const id=b.dataset.del;
   if(delArmed!==id){ delArmed=id; render(); setTimeout(()=>{ if(delArmed===id){delArmed=null;render();} },4000); return; }
@@ -1113,7 +1142,7 @@ function renderHist(){
             ${f.until?`<div class="kv"><span>Venceu / vence</span><b>${fmtShort(f.until)}</b></div>`:""}
             ${x.rec?`<div class="kv"><span>Recomendado</span><b>${x.rec.type===x.type?'<span class="badge good">✓ Era o recomendado</span>':`<span class="badge diff">${TYPE_NAME[x.rec.type]||x.rec.type}</span>`}</b></div>`:""}
             ${f.wa?`<p class="wa" style="color:var(--amber);font-size:14px;margin-top:4px">${f.wa}</p>`:""}
-            <div class="act"><button type="button" data-del="${x.id}"${arm?' class="danger"':""}>${arm?"Toque de novo para apagar":"Apagar"}</button></div>
+            ${editId===x.id ? editForm(x) : `<div class="act"><button type="button" data-edit="${x.id}">Editar</button><button type="button" data-del="${x.id}"${arm?' class="danger"':""}>${arm?"Toque de novo para apagar":"Apagar"}</button></div>`}
           </div>`; }).join("");
         return `<details class="hDay" data-k="d${x_id(L)}"${op("d"+x_id(L))}><summary>${flags}<span class="grow">${DOW[dd.getDay()]} ${dm(dd)}<span class="sub2">${names}</span></span><span class="amt">${brl(sum(L))}</span>${CHEV}</summary>${det}</details>`;
       }).join("");
