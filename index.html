@@ -106,6 +106,7 @@ details summary{cursor:pointer;font-weight:600;min-height:32px}
 .hidden{display:none !important}
 details.collapse > summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;min-height:44px}
 details.collapse > summary::-webkit-details-marker{display:none}
+details.collapse > summary > span{flex:1;min-width:0}
 details.collapse .sumT{display:block;font-size:16px;font-weight:600;color:var(--muted)}
 details.collapse .sumS{display:block;font-size:15px;color:var(--ink);margin-top:2px}
 details.collapse .chev{width:28px;height:28px;flex:none;stroke:var(--ink);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s}
@@ -430,7 +431,7 @@ details[open] > summary .chev2{transform:rotate(180deg)}
     <p class="muted" style="font-size:15px">O app testa todas as combinações de 24h, 72h e passe por ganho com o que você previu para cada dia e mostra a mais barata. Ele considera que o passe começa a valer na primeira corrida do dia. O crédito do passe por ganho que sobra passa para os dias seguintes, por isso entra no custo só a parte usada. O passe por ganho só é sugerido quando economiza pelo menos R$ 1.</p>
     <button type="button" class="wide danger" id="resetAll">Apagar meus dados</button>
     <p class="saved" id="saved"></p>
-    <p class="ver">Versão 18</p>
+    <p class="ver">Versão 19</p>
   </div>
 </section>
 </main>
@@ -687,7 +688,7 @@ function buildDays(y,m){
         else if (cur.bought<sEnd && cur.expires>shiftStartOf(d) && cur.expires<sEnd) o.warn=`vence ${pad(cur.expires.getHours())}:${pad(cur.expires.getMinutes())}`;
       } else if (cur.kind==="gain" && credit>0){
         if (credit>=o.resid){ credit-=o.resid; o.cur="atual"; o.resid=0; }
-        else { o.resid=Math.round(o.resid-credit); credit=0; o.warn="crédito acaba"; }
+        else { o.creditLeft=credit; o.resid=Math.round(o.resid-credit); credit=0; o.warn="crédito acaba"; }
       }
     }
     if (o.past) o.resid=0;
@@ -829,6 +830,8 @@ function buyTiming(next){
   const ty=typeOfBuy(next), cur=currentPass(), d=next.d.date;
   let at=shiftStartOf(d), afterCur=false;
   if (cur.kind==="time" && cur.expires>shiftStartOf(d) && cur.expires<shiftEndOf(d)){ at=new Date(cur.expires); afterCur=true; }
+  // passe por ganho que acaba no meio do turno: estima a hora pela parte do ganho do dia que o crédito cobre
+  if (cur.kind==="gain" && next.d.creditLeft!=null && next.d.earn>0){ at=new Date(shiftStartOf(d).getTime()+ (next.d.creditLeft/next.d.earn)*state.shiftHours*3600e3); afterCur=true; }
   if (!HOURS[ty]) return {ty,at,afterCur,until:null,partial:null};
   const until=new Date(at.getTime()+HOURS[ty]*3600e3);
   let partial=null;
@@ -904,14 +907,17 @@ function renderHoje(){
         <div class="kv"><span>Paguei</span><b>${brl(paidOf())}</b></div>${warn}`;
     }
   } else {
-    let credit=cur.credit, d=new Date(today0), full=0, endDay=null;
-    for(let i=0;i<120 && credit>0;i++){ const e=earnFor(d); if(e>0){ if(credit>=e){credit-=e;full++;} else {endDay=new Date(d);break;} } d.setDate(d.getDate()+1); }
+    let credit=cur.credit, d=new Date(today0), full=0, endDay=null, endAt=null;
+    if(isClosed(today0)) d.setDate(d.getDate()+1);
+    for(let i=0;i<120 && credit>0;i++){ const e=earnFor(d); if(e>0){ if(credit>=e){credit-=e;full++;} else {endDay=new Date(d); endAt=new Date(shiftStartOf(d).getTime()+(credit/e)*state.shiftHours*3600e3); break;} } d.setDate(d.getDate()+1); }
+    const todayOpen = !isClosed(today0) && planned(today0)>0 && new Date()>shiftEndOf(today0);
     box.innerHTML=`<span class="big num blue">Faltam ${brl0(cur.credit)}</span>
       <div class="kv"><span>Tipo</span><b>${cur.label}</b></div>
       <div class="kv"><span>Já faturei com ele</span><b>${brl(c.earned||0)}</b></div>
       <div class="kv"><span>Dura mais ou menos</span><b>${cur.credit<=0?"acabou":`${full} dia${full!==1?"s":""} inteiro${full!==1?"s":""}`}</b></div>
-      ${endDay?`<div class="kv"><span>Acaba durante</span><b>${DOW_LONG[endDay.getDay()]} ${dm(endDay)}</b></div>`:""}
-      <div class="kv"><span>Paguei</span><b>${brl(paidOf())}</b></div>`;
+      ${endDay?`<div class="kv"><span>Deve acabar</span><b>${DOW_LONG[endDay.getDay()]} ${dm(endDay)}, por volta das ${hm(endAt)}</b></div>`:""}
+      <div class="kv"><span>Paguei</span><b>${brl(paidOf())}</b></div>
+      ${todayOpen?`<div class="tip"><b>Já rodou hoje?</b> Encerre o dia (no cartão Hoje, mais abaixo). Enquanto o dia está aberto, o app ainda desconta do crédito o ganho previsto para hoje, e o “Já faturei” provavelmente já inclui o de hoje.</div>`:""}`;
   }
   $("passForm").classList.toggle("hidden",!formOpen);
   $("passBtns").classList.toggle("hidden",formOpen);
@@ -933,9 +939,11 @@ function renderHoje(){
     const price = isGain ? PR[ty+"p"]*qty : (ty==="t72"?PR.p72:PR.p24);
     const when = dayWord(next.d.date) || `${DOW_LONG[next.d.date.getDay()]}, ${dm(next.d.date)}`;
     const tm=buyTiming(next);
-    let whenTxt = isGain ? `${when}, quando o crédito acabar` : (tm.afterCur ? `${when}, às ${hm(tm.at)}` : `${when}, na 1ª corrida`);
+    let whenTxt = tm.afterCur ? `${when}, por volta das ${hm(tm.at)}` : (isGain ? `${when}, quando o crédito acabar` : `${when}, na 1ª corrida`);
+    if (tm.afterCur && cur.kind==="time") whenTxt=`${when}, às ${hm(tm.at)}`;
     let tip="";
-    if (!isGain && tm.afterCur) tip+=`<div class="tip">Seu passe atual vale até as <b>${hm(tm.at)}</b>. Faça a primeira corrida com o passe novo <b>só depois desse horário</b>, para não pagar horas repetidas.</div>`;
+    if (tm.afterCur && cur.kind==="time") tip+=`<div class="tip">Seu passe atual vale até as <b>${hm(tm.at)}</b>. Faça a primeira corrida com o passe novo <b>só depois desse horário</b>, para não pagar horas repetidas.</div>`;
+    if (tm.afterCur && cur.kind==="gain") tip+=`<div class="tip">Pelo que você previu para esse dia, o crédito atual acaba <b>por volta das ${hm(tm.at)}</b>, no meio do turno. A Uber compra o passe padrão nessa hora, então deixe o padrão como <b>${TYPE_NAME[ty]}</b> antes de começar a rodar.</div>`;
     if (!isGain && tm.partial){ const pn=DOW_LONG[tm.partial.day.getDay()]; tip+=`<div class="tip">Esse passe vence ${pn} às <b>${hm(tm.until)}</b>, no meio do turno. ${pn.charAt(0).toUpperCase()+pn.slice(1)} você roda coberto até esse horário e começa o próximo passe a partir dele.</div>`; }
     $("nextBuy").innerHTML=`<span class="big num green">${what}</span>
       <div class="kv"><span>Quando</span><b>${whenTxt}</b></div>
