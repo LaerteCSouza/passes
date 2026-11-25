@@ -199,6 +199,10 @@ details[open] > summary .chev2{transform:rotate(180deg)}
 <!-- ============ HOJE ============ -->
 <section class="screen" id="s-hoje" data-screen="hoje">
   <div class="alert warn recAlert hidden" id="recAlert" role="status"></div>
+  <div class="alert ok hidden" id="endBanner" style="margin-bottom:12px">
+    <strong>Seu turno já acabou?</strong> Anote quanto ganhou e encerre o dia para ver o passe de amanhã.
+    <div class="rowb" style="margin-top:10px"><button type="button" class="primary" id="goClose">Encerrar o dia</button></div>
+  </div>
 
   <div class="panel onb hidden" id="onboard">
     <h2>Primeiros passos</h2>
@@ -262,13 +266,21 @@ details[open] > summary .chev2{transform:rotate(180deg)}
     <p class="fine">A Uber compra o passe padrão sozinha quando você aceita uma corrida sem passe ativo. A troca do padrão só vale depois que o passe atual vencer.</p>
   </div>
 
-  <div class="panel">
-    <h2>Hoje</h2>
-    <div class="saveRow">
-      <label>Quanto ganhei hoje de verdade (R$)<input type="number" inputmode="decimal" id="realToday" min="0" placeholder="anote no fim do dia"></label>
+  <div class="panel" id="dayCard">
+    <h2 id="dayTitle">Hoje</h2>
+    <div id="dayOpen">
+      <div class="saveRow">
+        <label>Quanto ganhei hoje de verdade (R$)<input type="number" inputmode="decimal" id="realToday" min="0" placeholder="anote no fim do dia"></label>
+      </div>
+      <p class="ok hidden" id="realOk" style="margin-top:6px">✓ Anotado</p>
+      <p class="fine" id="realHint" style="margin:6px 0 10px"></p>
+      <button type="button" class="primary wide" id="closeDay" style="margin:4px 0 6px">Encerrar o dia</button>
+      <p class="fine" id="closeHint" style="margin:0 0 10px">Ao encerrar, o app já planeja a partir de amanhã.</p>
     </div>
-    <p class="ok hidden" id="realOk" style="margin-top:6px">✓ Anotado</p>
-    <p class="fine" id="realHint" style="margin:6px 0 10px"></p>
+    <div id="dayClosed" class="hidden">
+      <div class="alert ok" id="closedMsg"></div>
+      <button type="button" class="wide" id="reopenDay" style="margin:10px 0 10px">Reabrir o dia</button>
+    </div>
     <div class="kv"><span>Estimativa de ganho</span><b id="hojeEarn"></b></div>
     <div class="kv"><span>Faturamento previsto até o fim do mês</span><b id="hojeMonth"></b></div>
     <div class="kv"><span>Gasto com passe no mês</span><b id="hojeCost"></b></div>
@@ -417,7 +429,7 @@ details[open] > summary .chev2{transform:rotate(180deg)}
     <p class="muted" style="font-size:15px">O app testa todas as combinações de 24h, 72h e passe por ganho com o que você previu para cada dia e mostra a mais barata. Ele considera que o passe começa a valer na primeira corrida do dia. O crédito do passe por ganho que sobra passa para os dias seguintes, por isso entra no custo só a parte usada. O passe por ganho só é sugerido quando economiza pelo menos R$ 1.</p>
     <button type="button" class="wide danger" id="resetAll">Apagar meus dados</button>
     <p class="saved" id="saved"></p>
-    <p class="ver">Versão 12</p>
+    <p class="ver">Versão 13</p>
   </div>
 </section>
 </main>
@@ -439,7 +451,7 @@ const today0 = new Date(); today0.setHours(0,0,0,0);
 const DEFAULTS = () => ({
   week:[0,90,90,90,90,90,100], overrides:{},
   current:{type:"none", bought:nowLocalInput(), paid:null, earned:0}, spent:{},
-  shiftStart:"06:00", shiftHours:10, real:{}, useAvg:true, defaultPass:"", history:[], lastBackup:null, lastRec:null, onboarded:false,
+  shiftStart:"06:00", shiftHours:10, real:{}, useAvg:true, defaultPass:"", history:[], lastBackup:null, lastRec:null, onboarded:false, closed:{},
   prices:{p24:12,p72:32,g1p:36,g1e:280,g2p:108,g2e:880}
 });
 let state = DEFAULTS();
@@ -477,7 +489,7 @@ function scheduleSave(){
 }
 function merge(saved){
   if (!saved || typeof saved!=="object") return;
-  state = {...state, ...saved, current:{...state.current,...(saved.current||{})}, prices:{...state.prices,...(saved.prices||{})}, spent:{...(saved.spent||{})}, overrides:{...(saved.overrides||{})}, real:{...(saved.real||{})}, history:Array.isArray(saved.history)?saved.history.slice():[]};
+  state = {...state, ...saved, current:{...state.current,...(saved.current||{})}, prices:{...state.prices,...(saved.prices||{})}, spent:{...(saved.spent||{})}, overrides:{...(saved.overrides||{})}, real:{...(saved.real||{})}, closed:{...(saved.closed||{})}, history:Array.isArray(saved.history)?saved.history.slice():[]};
   migrateHistory();
 }
 try{ merge(JSON.parse(localStorage.getItem("planoPasse")||"null")); }catch(e){}
@@ -518,6 +530,22 @@ $("curPaid").addEventListener("input",e=>{ state.current.paid = e.target.value==
 $("curEarned").addEventListener("input",e=>{ state.current.earned=num(e.target.value); changed(); });
 $("useAvg").addEventListener("change",e=>{ state.useAvg=e.target.checked; changed(); });
 $("defPass").addEventListener("change",e=>{ state.defaultPass=e.target.value; render(); scheduleSave(); });
+let closeArmed=false;
+function doClose(){
+  const k=keyOf(today0);
+  state.closed[k]=true; state.lastRec=null; closeArmed=false; changed();
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+$("closeDay").onclick=()=>{
+  const k=keyOf(today0);
+  if(!(k in state.real) && !closeArmed && planned(today0)>0){
+    closeArmed=true; $("closeHint").innerHTML="<b>Você não anotou o ganho de hoje.</b> Anote acima, ou toque de novo em Encerrar para encerrar assim mesmo.";
+    $("realToday").focus(); return;
+  }
+  doClose();
+};
+$("reopenDay").onclick=()=>{ delete state.closed[keyOf(today0)]; state.lastRec=null; changed(); };
+$("goClose").onclick=()=>{ $("dayCard").scrollIntoView({behavior:"smooth",block:"center"}); setTimeout(()=>$("realToday").focus(),400); };
 let realOkT=null;
 $("realToday").addEventListener("input",e=>{ const k=keyOf(today0); if(e.target.value==="") delete state.real[k]; else state.real[k]=num(e.target.value); render(); scheduleSave();
   $("realOk").classList.toggle("hidden", e.target.value===""); clearTimeout(realOkT); realOkT=setTimeout(()=>$("realOk").classList.add("hidden"),2500); });
@@ -587,9 +615,10 @@ function computeAvg(){
   AVG=sum.map((s,i)=>n[i]>=2?s/n[i]:null); AVGN=n;
 }
 function planned(d){ const dow=d.getDay(), base=state.week[dow]||0; return (state.useAvg && base>0 && AVG[dow]!=null) ? AVG[dow] : base; }
+const isClosed = d => d<today0 || !!(state.closed && state.closed[keyOf(d)]);
 function earnFor(d){
   const k=keyOf(d);
-  if (d<today0 && k in state.real) return state.real[k];
+  if (isClosed(d) && k in state.real) return state.real[k];
   if (k in state.overrides) return state.overrides[k];
   return planned(d);
 }
@@ -615,7 +644,7 @@ function buildDays(y,m){
   const days=[];
   for (let i=1;i<=last.getDate()+EXT_DAYS;i++){
     const d=new Date(y,m,i), earn=earnFor(d);
-    const o={date:d,key:keyOf(d),earn,ext:i>last.getDate(),past:d<today0,today:+d===+today0,cur:null,warn:null,resid:Math.round(earn)};
+    const o={date:d,key:keyOf(d),earn,ext:i>last.getDate(),past:isClosed(d),today:+d===+today0,cur:null,warn:null,resid:Math.round(earn)};
     if (!o.past && earn>0){
       if (cur.kind==="time"){
         const sEnd=shiftEndOf(d);
@@ -758,6 +787,7 @@ function nextPurchase(){
   return null;
 }
 const HOURS={t24:24,t72:72};
+function dayWord(d){ const t=new Date(today0); if(+d===+t) return "hoje"; t.setDate(t.getDate()+1); if(+d===+t) return `amanhã (${DOW_LONG[d.getDay()]})`; return ""; }
 const hm = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 /* Quando comprar e até quando vale, considerando a hora em que o passe atual vence */
 function buyTiming(next){
@@ -822,7 +852,8 @@ function renderHoje(){
       const h=Math.floor(ms/3600e3), dd=Math.floor(h/24), hh=h%24, mm=Math.floor(ms%3600e3/60e3);
       const left = dd ? `${dd} dia${dd>1?"s":""} e ${hh}h` : `${hh}h ${pad(mm)}min`;
       const cov=[]; let warn="";
-      for(let d=new Date(today0); d<=cur.expires; d.setDate(d.getDate()+1)){
+      const fromD=new Date(today0); if(isClosed(today0)) fromD.setDate(fromD.getDate()+1);
+      for(let d=fromD; d<=cur.expires; d.setDate(d.getDate()+1)){
         if(earnFor(d)<=0) continue;
         const sEnd=shiftEndOf(d);
         if(cur.bought<sEnd && cur.expires>=sEnd) cov.push(DOW_LONG[d.getDay()]);
@@ -834,7 +865,7 @@ function renderHoje(){
       box.innerHTML=`<span class="big num blue">Faltam ${left}</span>
         <div class="kv"><span>Tipo</span><b>${cur.label}</b></div>
         <div class="kv"><span>Vale até</span><b>${fmtDT(cur.expires)}</b></div>
-        <div class="kv"><span>Dias de trabalho cobertos</span><b>${cov.length?cov.join(", "):"nenhum inteiro"}</b></div>
+        <div class="kv"><span>Dias de trabalho cobertos</span><b>${cov.length?cov.join(", "):(isClosed(today0)?"nenhum (hoje já foi encerrado)":"nenhum inteiro")}</b></div>
         <div class="kv"><span>Paguei</span><b>${brl(paidOf())}</b></div>${warn}`;
     }
   } else {
@@ -865,7 +896,7 @@ function renderHoje(){
     const qty = isGain ? (parseInt((next.tag.split("×")[1])||"1")) : 1;
     const what = isGain ? `Por ganho ${brl0(PR[ty+"p"])}${qty>1?` (×${qty})`:""}` : `Passe ${next.tag}`;
     const price = isGain ? PR[ty+"p"]*qty : (ty==="t72"?PR.p72:PR.p24);
-    const when = next.d.today ? "hoje" : `${DOW_LONG[next.d.date.getDay()]}, ${dm(next.d.date)}`;
+    const when = dayWord(next.d.date) || `${DOW_LONG[next.d.date.getDay()]}, ${dm(next.d.date)}`;
     const tm=buyTiming(next);
     let whenTxt = isGain ? `${when}, quando o crédito acabar` : (tm.afterCur ? `${when}, às ${hm(tm.at)}` : `${when}, na 1ª corrida`);
     let tip="";
@@ -886,10 +917,10 @@ function renderHoje(){
   const want=typeOfBuy(next), have=state.defaultPass, ds=$("defStatus");
   if (!want) ds.innerHTML=`<div class="alert ok">Sem compra prevista por enquanto.</div>`;
   else {
-    const when = next.d.today ? "hoje" : `${DOW_LONG[next.d.date.getDay()]} ${dm(next.d.date)}`;
-    if (!have) ds.innerHTML=`<div class="alert warn">Antes de rodar ${when === "hoje" ? "hoje" : when}, deixe o passe padrão como <strong>${TYPE_NAME[want]}</strong>. Depois marque abaixo como está no seu app.</div>`;
-    else if (have===want) ds.innerHTML=`<div class="alert ok"><strong>Tudo certo.</strong> Seu padrão já está como ${TYPE_NAME[want]}, que é o que você vai precisar ${when === "hoje" ? "hoje" : when}.</div>`;
-    else ds.innerHTML=`<div class="alert warn"><strong>Troque o passe padrão.</strong> Está como ${TYPE_NAME[have]}, mas ${when === "hoje" ? "hoje" : when} o melhor é <strong>${TYPE_NAME[want]}</strong>. Se não trocar, a Uber compra o ${TYPE_NAME[have]} sozinha na primeira corrida.</div>`;
+    const when = dayWord(next.d.date) || `${DOW_LONG[next.d.date.getDay()]} ${dm(next.d.date)}`;
+    if (!have) ds.innerHTML=`<div class="alert warn">Antes de rodar ${when}, deixe o passe padrão como <strong>${TYPE_NAME[want]}</strong>. Depois marque abaixo como está no seu app.</div>`;
+    else if (have===want) ds.innerHTML=`<div class="alert ok"><strong>Tudo certo.</strong> Seu padrão já está como ${TYPE_NAME[want]}, que é o que você vai precisar ${when}.</div>`;
+    else ds.innerHTML=`<div class="alert warn"><strong>Troque o passe padrão.</strong> Está como ${TYPE_NAME[have]}, mas ${when} o melhor é <strong>${TYPE_NAME[want]}</strong>. Se não trocar, a Uber compra o ${TYPE_NAME[have]} sozinha na primeira corrida.</div>`;
   }
 
   // hoje
@@ -899,6 +930,22 @@ function renderHoje(){
   const dowT=today0.getDay();
   $("realHint").textContent = AVG[dowT]!=null ? `Sua média real de ${DOW_LONG[dowT]}: ${brl0(AVG[dowT])} (${AVGN[dowT]} dias anotados).` : `Anotando todo dia, o app aprende sua média de cada dia da semana.`;
   $("hojeEarn").textContent = earnFor(today0)>0 ? brl0(earnFor(today0)) : "folga";
+  // encerrar o dia
+  const closedToday=!!state.closed[tk], worksToday=planned(today0)>0||(tk in state.real);
+  $("dayOpen").classList.toggle("hidden",closedToday);
+  $("dayClosed").classList.toggle("hidden",!closedToday);
+  $("dayTitle").textContent = closedToday ? "Hoje · dia encerrado" : "Hoje";
+  if(!closedToday && !closeArmed) $("closeHint").textContent="Ao encerrar, o app já planeja a partir de amanhã.";
+  if(closedToday){
+    const nb=next, tm = nb ? buyTiming(nb) : null;
+    let amanha="";
+    if(!nb) amanha="Nenhuma compra prevista por enquanto.";
+    else { const w=dayWord(nb.d.date)||`${DOW_LONG[nb.d.date.getDay()]} ${dm(nb.d.date)}`, ty=typeOfBuy(nb);
+      amanha = `Próxima compra: <strong>${TYPE_NAME[ty]}</strong>, ${w}${tm&&tm.afterCur?` às ${hm(tm.at)}`:""}.`; }
+    $("closedMsg").innerHTML=`<strong>✓ Dia encerrado.</strong> ${tk in state.real?`Você ganhou ${brl0(state.real[tk])} hoje.`:"Ganho de hoje não anotado."}<br>${amanha}`;
+  }
+  const afterShift = new Date() > shiftEndOf(today0);
+  $("endBanner").classList.toggle("hidden", closedToday || !afterShift || !worksToday);
   $("hojeMonth").textContent = brl0(fut);
   $("hojeCost").textContent = brl0(sp.total + P.best.cost);
 }
@@ -940,6 +987,7 @@ function renderMes(){
     if(d.past) cls.push("past"); if(d.today) cls.push("today"); if(d.earn<=0) cls.push("off");
     if(d.key in state.overrides) cls.push("edited"); if(view.sel===d.key) cls.push("sel");
     if(d.past && d.key in state.real){ cls.push("real"); tag="real"; }
+    else if(d.today && d.past){ cls.push("real"); tag="fim"; }
     if(!d.past && d.earn>0 && !tag){
       if(shown.buys[i]){ cls.push("buy"); tag=shown.buys[i]; }
       else if(d.cur){ cls.push("cur"); tag="✓"; }
@@ -1142,7 +1190,7 @@ $("bkFile").addEventListener("change",e=>{
 });
 
 fillInputs(); render(); renderBackup(); show(location.hash.slice(1));
-setInterval(renderHoje, 60000);
+setInterval(()=>{ const n=new Date(); n.setHours(0,0,0,0); if(+n!==+today0) location.reload(); else renderHoje(); }, 60000);
 if ("serviceWorker" in navigator) { window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").then(r=>r.update()).catch(()=>{})); }
 </script>
 </body>
