@@ -150,6 +150,31 @@ details.whyBox[open] > summary::after{transform:rotate(180deg)}
 .hist .wa{grid-column:1/-1;font-size:14px;color:var(--amber)}
 .hist .act{grid-column:1/-1;display:flex;gap:8px;margin-top:4px}
 .hist .act button{min-height:36px;font-size:14px;padding:0 12px}
+.hMonth{background:var(--surface);border:1px solid var(--line);border-radius:14px;margin-bottom:12px;overflow:hidden}
+.hMonth > summary,.hWeek > summary,.hDay > summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px}
+.hMonth > summary::-webkit-details-marker,.hWeek > summary::-webkit-details-marker,.hDay > summary::-webkit-details-marker{display:none}
+.hMonth > summary{padding:14px 16px;min-height:56px}
+.hMonth > summary .t{font-size:19px;font-weight:700;font-family:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif}
+.hBody{padding:0 12px 12px}
+.hWeek{border:1px solid var(--line);border-radius:12px;margin-top:8px;background:var(--bg)}
+.hWeek > summary{padding:10px 12px;min-height:48px}
+.hWeek > summary .t{font-weight:600}
+.hDay{border-top:1px solid var(--line);background:var(--surface)}
+.hDay:first-of-type{border-top:0}
+.hDay > summary{padding:10px 12px;min-height:48px}
+.hDays{border-top:1px solid var(--line);border-radius:0 0 12px 12px;overflow:hidden}
+.grow{flex:1;min-width:0}
+.sub2{display:block;font-size:13px;color:var(--muted);font-weight:500}
+.amt{font-weight:700;white-space:nowrap;font-family:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;font-size:18px}
+.chev2{width:20px;height:20px;flex:none;stroke:var(--muted);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s}
+details[open] > summary .chev2{transform:rotate(180deg)}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.dot.good{background:var(--green)} .dot.diff{background:var(--amber)} .dot.none{background:var(--line)}
+.hDetail{padding:0 12px 12px}
+.hDetail .kv{padding:6px 0;font-size:15px}
+.hDetail .act{display:flex;gap:8px;margin-top:8px}
+.hDetail .act button{min-height:38px;font-size:14px}
+.addSum{cursor:pointer;font-weight:600;min-height:40px;display:flex;align-items:center;color:var(--green)}
 .histTotal{display:flex;justify-content:space-between;padding-top:10px;margin-top:4px;border-top:2px solid var(--line);font-weight:600}
 .tabs{max-width:560px;margin:8px auto 0;padding:0 14px}
 .tabs .in{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px}
@@ -306,11 +331,13 @@ details.whyBox[open] > summary::after{transform:rotate(180deg)}
 <!-- ============ HISTÓRICO ============ -->
 <section class="screen" id="s-historico" data-screen="historico" hidden>
   <div class="panel">
-    <h2>Passes comprados</h2>
-    <div class="totals" id="histTotals" style="margin-bottom:12px"></div>
-    <div id="histList"></div>
-    <details style="margin-top:12px" id="histAddBox" open>
-      <summary>Adicionar um passe que eu comprei</summary>
+    <h2>Resumo</h2>
+    <div class="totals" id="histTotals"></div>
+  </div>
+  <div id="histList"></div>
+  <div class="panel">
+    <details id="histAddBox">
+      <summary class="addSum">+ Adicionar um passe que eu comprei</summary>
       <div class="stack" style="margin-top:10px">
         <div class="row">
           <label>Tipo<select id="hType">
@@ -325,7 +352,7 @@ details.whyBox[open] > summary::after{transform:rotate(180deg)}
         <button type="button" class="primary" id="hAdd">Adicionar ao histórico</button>
       </div>
     </details>
-    <p class="fine">Use para conferir com o extrato da Uber. O passe que você registra na tela Hoje entra aqui sozinho.</p>
+    <p class="fine">O passe que você registra na tela Hoje entra aqui sozinho. Use esta opção só para passes antigos ou esquecidos.</p>
   </div>
 
 </section>
@@ -390,7 +417,7 @@ details.whyBox[open] > summary::after{transform:rotate(180deg)}
     <p class="muted" style="font-size:15px">O app testa todas as combinações de 24h, 72h e passe por ganho com o que você previu para cada dia e mostra a mais barata. Ele considera que o passe começa a valer na primeira corrida do dia. O crédito do passe por ganho que sobra passa para os dias seguintes, por isso entra no custo só a parte usada. O passe por ganho só é sugerido quando economiza pelo menos R$ 1.</p>
     <button type="button" class="wide danger" id="resetAll">Apagar meus dados</button>
     <p class="saved" id="saved"></p>
-    <p class="ver">Versão 11</p>
+    <p class="ver">Versão 12</p>
   </div>
 </section>
 </main>
@@ -507,9 +534,11 @@ $("goHist").onclick=()=>{ location.hash="historico"; };
 $("hAdd").onclick=()=>{
   const when=$("hWhen").value; if(!when){ $("hWhen").focus(); return; }
   state.history.push({id:uid(),type:$("hType").value,when,paid:num($("hPaid").value)});
-  render(); scheduleSave(); $("hWhen").value=nowLocalInput();
+  render(); scheduleSave(); $("hWhen").value=nowLocalInput(); $("histAddBox").open=false;
 };
 let delArmed=null;
+const histOpen=new Set(); let histInit=false;
+$("histList").addEventListener("toggle",e=>{ const d=e.target; if(!d.dataset||!d.dataset.k) return; if(d.open) histOpen.add(d.dataset.k); else histOpen.delete(d.dataset.k); },true);
 $("histList").addEventListener("click",e=>{
   const b=e.target.closest("button[data-del]"); if(!b) return;
   const id=b.dataset.del;
@@ -952,23 +981,31 @@ function fmtShort(d){ return `${DOW[d.getDay()].toLowerCase()} ${dm(d)} ${pad(d.
 /* Mais barato possível para os dias que você realmente trabalhou (ganho anotado ou previsão) */
 function idealFor(y,m){
   const ents=state.history.filter(x=>x.type!=="outro").map(x=>({...x,d:new Date(x.when)})).filter(x=>!isNaN(x.d)).sort((a,b)=>a.d-b.d);
-  if(!ents.length) return null;
-  const mStart=new Date(y,m,1), mEnd=new Date(y,m+1,0);
   const inMonth=ents.filter(x=>x.d.getFullYear()===y && x.d.getMonth()===m);
   if(!inMonth.length) return null;
-  const firstUse=new Date(ents[0].d); firstUse.setHours(0,0,0,0);
-  // até onde comparar: hoje (ou ontem, se hoje não foi anotado) ou até o fim do último passe por tempo comprado no mês
-  let end=new Date(today0); if(!(keyOf(today0) in state.real)) end.setDate(end.getDate()-1);
-  inMonth.forEach(x=>{ if(HOURS[x.type]){ const exp=new Date(x.d.getTime()+HOURS[x.type]*3600e3), ed=new Date(exp); ed.setHours(0,0,0,0);
-    if(exp<shiftEndOf(ed)) ed.setDate(ed.getDate()-1); if(ed>end) end=ed; } });
-  if(end>mEnd) end=mEnd;
-  const days=[];
-  for(let d=new Date(Math.max(mStart,firstUse)); d<=end; d.setDate(d.getDate()+1)){
-    const e=Math.round(earnFor(d)); days.push({date:new Date(d),key:keyOf(d),earn:e,resid:e,ext:false,past:false});
+  // dias de trabalho cobertos pelos passes que você registrou
+  const cov=new Set(), lim=new Date(today0); if(!(keyOf(today0) in state.real)) lim.setDate(lim.getDate()-1);
+  inMonth.forEach(x=>{
+    const start=new Date(x.d); start.setHours(0,0,0,0);
+    if(HOURS[x.type]){
+      const exp=new Date(x.d.getTime()+HOURS[x.type]*3600e3);
+      for(let d=new Date(start); d<=exp; d.setDate(d.getDate()+1)){
+        if(earnFor(d)>0 && x.d<shiftEndOf(d) && exp>shiftStartOf(d)) cov.add(keyOf(d));
+      }
+    } else {
+      const nx=ents.find(o=>o.d>x.d), stop=nx?new Date(nx.d):new Date(lim.getTime()+864e5);
+      for(let d=new Date(start); d<stop && d<=lim; d.setDate(d.getDate()+1)) if(earnFor(d)>0) cov.add(keyOf(d));
+    }
+  });
+  const keys=[...cov].sort(); if(!keys.length) return null;
+  const [a1,b1,c1]=keys[0].split("-").map(Number), [a2,b2,c2]=keys[keys.length-1].split("-").map(Number);
+  const from=new Date(a1,b1-1,c1), to=new Date(a2,b2-1,c2), days=[];
+  for(let d=new Date(from); d<=to; d.setDate(d.getDate()+1)){
+    const k=keyOf(d), e=cov.has(k)?Math.round(earnFor(d)):0;
+    days.push({date:new Date(d),key:k,earn:e,resid:e,ext:false,past:false});
   }
-  if(!days.some(d=>d.resid>0)) return null;
   const s=strategies(days).find(x=>x.id==="best");
-  return {cost:s.cost, note:s.note, n:days.filter(d=>d.resid>0).length, from:days[0].date, to:days[days.length-1].date};
+  return {cost:s.cost, note:s.note, n:cov.size, from, to};
 }
 function idealBlock(y,m,paid){
   const ip=idealFor(y,m); if(!ip) return "";
@@ -979,39 +1016,67 @@ function idealBlock(y,m,paid){
   return `<div class="cmp"><div class="kv"><span>Você pagou</span><b>${brl(paid)}</b></div>
     <div class="kv"><span>O mais barato possível</span><b>${brl(ip.cost)}</b></div>
     <p style="margin-top:4px">${msg}</p>
-    <p class="fine" style="margin-top:6px">Ideal para os ${ip.n} dias de trabalho de ${dm(ip.from)} a ${dm(ip.to)} (o período coberto pelos passes que você comprou): ${ip.note}. Usa o ganho anotado de cada dia, ou a previsão nos dias sem anotação.</p></div>`;
+    <p class="fine" style="margin-top:6px">Ideal para os ${ip.n} dias de trabalho cobertos pelos passes que você registrou (${dm(ip.from)} a ${dm(ip.to)}): ${ip.note}. Usa o ganho anotado de cada dia, ou a previsão nos dias sem anotação.</p></div>`;
 }
+function weekStart(d){ const x=new Date(d); x.setHours(0,0,0,0); const k=(x.getDay()+6)%7; x.setDate(x.getDate()-k); return x; }
+const CHEV='<svg class="chev2" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 function renderHist(){
   const box=$("histList"), all=state.history.filter(x=>!isNaN(new Date(x.when))).sort((a,b)=>new Date(a.when)-new Date(b.when));
-  if(!all.length){ box.innerHTML=`<p class="muted">Nenhum passe registrado ainda. Quando você registrar um passe na tela Hoje, ele aparece aqui.</p>`; $("histTotals").innerHTML=""; return; }
-  // validação: passes por tempo que começam antes do anterior acabar
+  const sum=l=>l.reduce((s,x)=>s+(+x.paid||0),0);
+  const now=new Date(), wkNow=weekStart(now), thisM=`${now.getFullYear()}-${pad(now.getMonth()+1)}`;
+  const weekList=all.filter(x=>weekStart(new Date(x.when)).getTime()===wkNow.getTime());
+  const monthList=all.filter(x=>{ const d=new Date(x.when); return `${d.getFullYear()}-${pad(d.getMonth()+1)}`===thisM; });
+  $("histTotals").innerHTML=`<div><span>Esta semana</span><b class="num">${brl0(sum(weekList))}</b></div><div><span>Este mês</span><b class="num">${brl0(sum(monthList))}</b></div><div><span>Total geral</span><b class="num">${brl0(sum(all))}</b></div>`;
+  if(!all.length){ box.innerHTML=`<div class="panel"><p class="muted">Nenhum passe registrado ainda. Quando você registrar um passe na tela Hoje, ele aparece aqui.</p></div>`; return; }
+  // abre o mês e a semana atuais na primeira vez
+  if(!histInit){ histInit=true; histOpen.add("m"+thisM); histOpen.add("w"+keyOf(wkNow)); }
+  // validação: passe por tempo começando antes do anterior acabar
   let prevEnd=null; const info={};
   all.forEach(x=>{
-    const d=new Date(x.when); let dt="", wa="";
-    if(x.type==="t24"||x.type==="t72"){
-      const end=new Date(d.getTime()+(x.type==="t24"?24:72)*3600e3);
-      dt=`Valeu de ${fmtShort(d)} até ${fmtShort(end)}`;
-      if(prevEnd && d<prevEnd) wa=`Começou antes do passe anterior acabar (${fmtShort(prevEnd)}). Confira se a data está certa.`;
-      prevEnd=end;
-    } else if(x.type==="outro"){ dt="Total que você tinha anotado antes do histórico"; }
-    else { dt=`Começou em ${fmtShort(d)}`; prevEnd=null; }
-    info[x.id]={dt,wa};
+    const d=new Date(x.when); let until=null, wa="";
+    if(HOURS[x.type]){ until=new Date(d.getTime()+HOURS[x.type]*3600e3); if(prevEnd && d<prevEnd) wa=`Começou antes do passe anterior acabar (${fmtShort(prevEnd)}). Confira se a data está certa.`; prevEnd=until; }
+    else if(x.type!=="outro") prevEnd=null;
+    info[x.id]={until,wa};
   });
-  const groups={}; all.slice().reverse().forEach(x=>{ const d=new Date(x.when), k=`${d.getFullYear()}-${pad(d.getMonth()+1)}`; (groups[k]=groups[k]||[]).push(x); });
-  const now=new Date(), thisKey=`${now.getFullYear()}-${pad(now.getMonth()+1)}`;
-  const sum=l=>l.reduce((s,x)=>s+(+x.paid||0),0);
-  $("histTotals").innerHTML=`<div><span>Este mês</span><b class="num">${brl0(sum(groups[thisKey]||[]))}</b></div><div><span>Passes registrados</span><b class="num">${all.length}</b></div><div><span>Total geral</span><b class="num">${brl0(sum(all))}</b></div>`;
-  box.innerHTML=Object.keys(groups).map(k=>{
-    const [yy,mm]=k.split("-").map(Number), nm=monthLong(yy,mm-1), list=groups[k];
-    return `<h3 style="font-size:17px;margin:16px 0 4px">${nm.charAt(0).toUpperCase()+nm.slice(1)} ${yy}</h3>`+
-      list.map(x=>{ const cur=x.id===state.current.histId?" · atual":"", arm=delArmed===x.id, f=info[x.id];
-        return `<div class="hist"><span class="ty">${HTYPE[x.type]||x.type}${cur}</span><span class="pr num">${brl(+x.paid||0)}</span>
-          <span class="dt">${f.dt}</span>${f.wa?`<span class="wa">${f.wa}</span>`:""}
-          ${x.rec?(x.rec.type===x.type?`<span class="dt"><span class="badge good">✓ Era o recomendado</span></span>`:`<span class="dt"><span class="badge diff">O recomendado era ${TYPE_NAME[x.rec.type]||x.rec.type}</span></span>`):""}
-          <div class="act"><button type="button" data-del="${x.id}"${arm?' class="danger"':""}>${arm?"Toque de novo para apagar":"Apagar"}</button></div></div>`; }).join("")+
-      `<div class="histTotal"><span>Total pago em ${nm}</span><span class="num">${brl(sum(list))}</span></div>`+idealBlock(yy,mm-1,sum(list));
-  }).join("");
+  // agrupa: mês > semana > dia
+  const months={};
+  all.slice().reverse().forEach(x=>{
+    const d=new Date(x.when), mk=`${d.getFullYear()}-${pad(d.getMonth()+1)}`, wk=keyOf(weekStart(d)), dk=keyOf(d);
+    const M=months[mk]=months[mk]||{weeks:{},list:[]}; M.list.push(x);
+    const W=M.weeks[wk]=M.weeks[wk]||{days:{},list:[]}; W.list.push(x);
+    (W.days[dk]=W.days[dk]||[]).push(x);
+  });
+  const op=k=>histOpen.has(k)?" open":"";
+  const dotOf=x=> x.rec ? (x.rec.type===x.type?"good":"diff") : "none";
+  box.innerHTML=Object.keys(months).map(mk=>{
+    const [yy,mm]=mk.split("-").map(Number), nm=monthLong(yy,mm-1), M=months[mk];
+    const weeks=Object.keys(M.weeks).map(wk=>{
+      const W=M.weeks[wk], [a,b,c]=wk.split("-").map(Number), ws=new Date(a,b-1,c), we=new Date(ws); we.setDate(we.getDate()+6);
+      const isNow=ws.getTime()===wkNow.getTime();
+      const days=Object.keys(W.days).map(dk=>{
+        const L=W.days[dk], [y2,m2,d2]=dk.split("-").map(Number), dd=new Date(y2,m2-1,d2);
+        const names=L.map(x=>(HTYPE[x.type]||x.type).replace("Passe ","")).join(" + ");
+        const flags=L.map(x=>`<span class="dot ${dotOf(x)}"></span>`).join("");
+        const det=L.map(x=>{
+          const f=info[x.id], arm=delArmed===x.id, cur=x.id===state.current.histId;
+          return `<div class="hDetail">
+            <div class="kv"><span><b>${HTYPE[x.type]||x.type}</b>${cur?" · atual":""}</span><b>${brl(+x.paid||0)}</b></div>
+            ${x.type==="outro"?`<div class="kv"><span>Valor total anotado antes do histórico</span><b></b></div>`:`<div class="kv"><span>Começou</span><b>${fmtShort(new Date(x.when))}</b></div>`}
+            ${f.until?`<div class="kv"><span>Venceu / vence</span><b>${fmtShort(f.until)}</b></div>`:""}
+            ${x.rec?`<div class="kv"><span>Recomendado</span><b>${x.rec.type===x.type?'<span class="badge good">✓ Era o recomendado</span>':`<span class="badge diff">${TYPE_NAME[x.rec.type]||x.rec.type}</span>`}</b></div>`:""}
+            ${f.wa?`<p class="wa" style="color:var(--amber);font-size:14px;margin-top:4px">${f.wa}</p>`:""}
+            <div class="act"><button type="button" data-del="${x.id}"${arm?' class="danger"':""}>${arm?"Toque de novo para apagar":"Apagar"}</button></div>
+          </div>`; }).join("");
+        return `<details class="hDay" data-k="d${x_id(L)}"${op("d"+x_id(L))}><summary>${flags}<span class="grow">${DOW[dd.getDay()]} ${dm(dd)}<span class="sub2">${names}</span></span><span class="amt">${brl(sum(L))}</span>${CHEV}</summary>${det}</details>`;
+      }).join("");
+      const lbl = isNow ? "Esta semana" : `${dm(ws)} a ${dm(we)}`;
+      return `<details class="hWeek" data-k="w${wk}"${op("w"+wk)}><summary><span class="grow"><span class="t">${lbl}</span><span class="sub2">${isNow?`${dm(ws)} a ${dm(we)} · `:""}${W.list.length} passe${W.list.length>1?"s":""}</span></span><span class="amt">${brl(sum(W.list))}</span>${CHEV}</summary><div class="hDays">${days}</div></details>`;
+    }).join("");
+    return `<details class="hMonth" data-k="m${mk}"${op("m"+mk)}><summary><span class="grow"><span class="t">${nm.charAt(0).toUpperCase()+nm.slice(1)} ${yy}</span><span class="sub2">${M.list.length} passe${M.list.length>1?"s":""}</span></span><span class="amt">${brl(sum(M.list))}</span>${CHEV}</summary>
+      <div class="hBody">${weeks}${idealBlock(yy,mm-1,sum(M.list))}</div></details>`;
+  }).join("") + `<p class="fine" style="margin:-4px 4px 12px"><span class="dot good" style="display:inline-block"></span> seguiu a recomendação &nbsp; <span class="dot diff" style="display:inline-block"></span> diferente do recomendado &nbsp; <span class="dot none" style="display:inline-block"></span> sem recomendação registrada</p>`;
 }
+const x_id = L => L.map(x=>x.id).join("_");
 function render(){
   computeAvg();
   weekBox.querySelectorAll("[data-avg]").forEach(s=>{ const i=+s.dataset.avg; s.textContent = AVG[i]!=null ? `média ${Math.round(AVG[i])}` : ""; });
